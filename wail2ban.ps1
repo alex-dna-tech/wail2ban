@@ -21,6 +21,7 @@ function _Help {
     " -config    : show the settings that are being used "
     " -jail      : show the currently banned IPs"
     " -jailbreak : bust out all the currently banned IPs"
+    " -unban     : release by IP"
     " -help      : This message."
     " "
 }
@@ -31,14 +32,14 @@ $DebugPreference = "continue"
 ################################################################################
 #  Constants
 
-$CHECK_WINDOW = 120  # We check the most recent X seconds of log.         Default: 120
+$CHECK_WINDOW = 600  # We check the most recent X seconds of log.        Default: 600 
 $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
 	
 ################################################################################
 #  Files
 
-$wail2banInstall = "" + (Get-Location) + "\"
+$wail2banInstall = "$PSScriptRoot\"
 $logFile = $wail2banInstall + "wail2ban_log.log"
 $ConfigFile = $wail2banInstall + "wail2ban_config.ini"
 $BannedIPLog = $wail2banInstall + "bannedIPLog.ini"
@@ -96,7 +97,7 @@ switch -regex -file $ConfigFile {
 #We also want to whitelist this machine's NICs.
 $SelfList = @() 
 foreach ($listing in ((ipconfig | findstr [0-9].\.))) {
-    if ($listing -match "Address" ) { $SelfList += $listing.Split()[-1] }
+    if ($listing -match "IPv4" ) { $SelfList += $listing.Split()[-1] }
 } 
 
 ################################################################################
@@ -407,6 +408,11 @@ if ($args -match "-help") {
     _Help; exit
 }
 
+#Display Help Message
+if ($args -match "-p") {
+    Write-Host $setting
+}
+
 ################################################################################
 #Setup for the loop
 
@@ -420,11 +426,13 @@ $eventlist = $eventlist.substring(0, $eventlist.length - 4) + ")"
 $query = "SELECT * FROM __instanceCreationEvent WHERE TargetInstance ISA 'Win32_NTLogEvent' AND $eventlist"
 
 _Actioned "wail2ban invoked"
+
 _Actioned "Checking for a heap of events: "
 $CheckEvents | ForEach-Object { _Actioned  " - $($_.EventLog) log event code $($_.EventID)" }
-_Actioned "The Whitelist: $whitelist"
+_Actioned "The Whitelist: $Whitelist"
 _Actioned "The Self-list: $Selflist"
 
+_LogEventMessage "wail2ban invoked in $wail2banInstall. SelfList: $SelfList $Whitelist" ADD OK
 _PickupBanDuration
 
 
