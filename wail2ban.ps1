@@ -1,3 +1,65 @@
+<#
+.SYNOPSIS
+    wail2ban is a PowerShell script that monitors Windows Event Logs for failed login attempts and bans the offending IP addresses.
+
+.DESCRIPTION
+    wail2ban is an attempt to recreate the functionality of fail2ban for Windows. It monitors the Windows Event Logs for specific event IDs that indicate a failed login attempt. When a certain number of failed attempts from the same IP address are detected within a specified time window, the script will create a new inbound firewall rule to block that IP address.
+
+    The script can be configured to monitor different event logs and event IDs, and the ban duration is configurable. The script also supports a whitelist of IP addresses that should never be banned.
+
+.PARAMETER ListBans
+    Lists all the currently banned IP addresses.
+
+.PARAMETER UnbanIP
+    Removes the specified IP address from the ban list.
+
+.PARAMETER ClearAllBans
+    Removes all the IP addresses that have been banned by this script.
+
+.EXAMPLE
+    .\wail2ban.ps1
+    Starts the script in monitoring mode.
+
+.EXAMPLE
+    .\wail2ban.ps1 -ListBans
+    Lists all the currently banned IP addresses.
+
+.EXAMPLE
+    .\wail2ban.ps1 -UnbanIP "1.2.3.4"
+    Removes the IP address "1.2.3.4" from the ban list.
+
+.EXAMPLE
+    .\wail2ban.ps1 -ClearAllBans
+    Removes all the IP addresses that have been banned by this script.
+
+.NOTES
+    Author: glasnt
+    License: MIT
+#>
+# Prerequisite Checks
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script requires administrative privileges. Please run it as an administrator."
+    exit 1
+}
+
+
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    Write-Error "This script requires PowerShell version 5.1 or higher."
+    exit 1
+}
+
+$policy = Get-ExecutionPolicy
+if ($policy -eq 'Restricted') {
+    Write-Error "The PowerShell execution policy is set to 'Restricted'. Please set it to 'RemoteSigned' or 'Unrestricted' to run this script."
+    exit 1
+}
+
+param (
+    [switch]$ListBans,
+    [string]$UnbanIP,
+    [switch]$ClearAllBans
+)
+
 ################################################################################
 #                        _ _ ____  _                 
 #         __      ____ _(_) |___ \| |__   __ _ _ __  
@@ -6,56 +68,33 @@
 #           \_/\_/ \__,_|_|_|_____|_.__/ \__,_|_| |_|
 #   
 ################################################################################
-# 
-# For help, read the below function. 
-#
-function _Help {
-    "`nwail2ban   `n"
-    "wail2ban is an attempt to recreate fail2ban for windows, hence [w]indows f[ail2ban]."
-    " "
-    "wail2ban takes configured events known to be audit failures, or similar, checks for " + `
-        "IPs in the event message, and given sufficient failures, bans them for a small amount" + `
-        "of time."
-    " "
-    "Settings: "
-    " -config    : show the settings that are being used "
-    " -jail      : show the currently banned IPs"
-    " -jailbreak : bust out all the currently banned IPs"
-    " -unban     : release by IP"
-    " -help      : This message."
-    " "
-}
-
 
 $DebugPreference = "continue"
 
-################################################################################
-#  Constants
 
-$CHECK_WINDOW = 600  # We check the most recent X seconds of log.        Default: 600 
+################################################################################
+#  Configurable Variables
+################################################################################
+
+$CHECK_WINDOW = 600  # We check the most recent X seconds of log.        Default: 600
 $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
-	
-################################################################################
-#  Files
-
 $wail2banInstall = "$PSScriptRoot\"
 $logFile = $wail2banInstall + "wail2ban_log.log"
 $ConfigFile = $wail2banInstall + "wail2ban_config.ini"
 $BannedIPLog = $wail2banInstall + "bannedIPLog.ini"
-
-################################################################################
-# Constructs
-
 $RecordEventLog = "Application"     # Where we store our own event messages
 $FirewallRulePrefix = "wail2ban block:" # What we name our Rules
-
 $EventTypes = "Application,Security,System"	  #Event logs we allow to be processed
+
+################################################################################
+#  End of Configurable Variables
+################################################################################
 
 New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?<Second>2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?<Third>2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?<Fourth>2[0-4]\d|25[0-5]|[01]?\d\d?)')
 
-# Ban Count structure
-$BannedIPs = @{ }
+$BannedIPs = @{}
+$TrackedIPs = @{}
 # Incoming event structure
 $CheckEvents = New-object system.data.datatable("CheckEvents")
 $null = $CheckEvents.columns.add("EventLog")
@@ -63,14 +102,12 @@ $null = $CheckEvents.columns.add("EventID")
 $null = $CheckEvents.columns.add("EventDescription")
 	  
 $WhiteList = @()
-#$host.UI.RawUI.BufferSize = new-object System.Management.Automation.Host.Size(100,50)
 
-$OSVersion = invoke-expression "wmic os get Caption /value"
 $BLOCK_TYPE = "NETSH"
 
 #Grep configuration file 
 switch -regex -file $ConfigFile {
-    "^\[(.+)\]$" {
+    "^\\[(.+)\\]$" {
         $Header = $matches[1].Trim()
     }
     "^\s*([^#].+?)\s*=\s*(.*)" {
@@ -102,6 +139,7 @@ foreach ($listing in ((ipconfig | findstr [0-9].\.))) {
 
 ################################################################################
 # Functions
+################################################################################
 
 function _LogEventMessage ($text, $task, $result) {
     $event = new-object System.Diagnostics.EventLog($RecordEventLog)
@@ -118,14 +156,14 @@ function _LogEventMessage ($text, $task, $result) {
 }
 
 #Log type functions
-function _Error       ($text) { _LogToFile "E" $text }
-function _Warning     ($text) { _LogToFile "W" $text }
-function _Debug       ($text) { _LogToFile "D" $text }
-function _Actioned    ($text) { _LogToFile "A" $text }
+function _Error       ($action, $ip, $reason) { _LogToFile "E" $action $ip $reason }
+function _Warning     ($action, $ip, $reason) { _LogToFile "W" $action $ip $reason }
+function _Debug       ($action, $ip, $reason) { _LogToFile "D" $action $ip $reason }
 
 #Log things to file and debug
-function _LogToFile ($type, $text) {
-    $output = "" + (Get-Date -format u).replace("Z", "") + " $tag $text"
+function _LogToFile ($type, $action, $ip, $reason) {
+    $timestamp = (Get-Date -format u).replace("Z", "")
+    $output = "[$timestamp] $action: $ip - $reason"
     if ($type -eq "A") { $output | Out-File $logfile -append }
     switch ($type) {
         "D" { Write-Debug $output }
@@ -218,14 +256,14 @@ function _GetBanDuration ($IP) {
 # Ban the IP (with checking)
 function _JailLockup ($IP, $ExpireDate) {
     $result = _Whitelisted($IP)
-    if ($result) { _Warning "$IP is whitelisted, except from banning. Why? $result " }
+    if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
     else {
         if (!$ExpireDate) {
             $BanDuration = _GetBanDuration($IP)
             $ExpireDate = (Get-Date).AddSeconds($BanDuration)
         }
         if ((_RuleExists $IP) -eq "Yes") {
-            _Warning ("IP $IP already blocked.")
+            _Warning "ALREADY BANNED" $IP "Attempted to ban already banned IP"
         }
         else {
             _FirewallAdd $IP $ExpireDate
@@ -236,7 +274,7 @@ function _JailLockup ($IP, $ExpireDate) {
 # Unban the IP (with checking)
 function _JailRelease ($IP) {
     if ((_RuleExists $IP) -eq "No") {
-        _Debug "$IP firewall listing doesn't exist. Can't remove it. "
+        _Debug "NOT BANNED" $IP "Attempted to unban IP that is not banned"
     }
     else {
         _FirewallRemove  $IP
@@ -253,14 +291,12 @@ function _FirewallAdd ($IP, $ExpireDate) {
     if ($rule) {
         $result = Invoke-Expression $rule
         if ($LASTEXITCODE -eq 0) {
-            $BanMsg = "Action Successful: Firewall rule added for $IP, expiring on $ExpireDate"
-            _Actioned "$BanMsg"
-            _LogEventMessage "$BanMsg" ADD OK
+            _Actioned "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
+            _LogEventMessage "BAN: $IP - Firewall rule added, expiring on $ExpireDate" ADD OK
         }
         else {
-            $Message = "Action Failure: could not add firewall rule for $IP,  error: `"$result`". Return code: $LASTEXITCODE"
-            _Error $Message
-            _LogEventMessage $Message ADD FAIL
+            _Error "BAN FAILED" $IP "Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE"
+            _LogEventMessage "BAN FAILED: $IP - Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" ADD FAIL
         }
     }
 }
@@ -274,13 +310,12 @@ function _FirewallRemove ($IP) {
     if ($rule) {
         $result = Invoke-Expression $rule
         if ($LASTEXITCODE -eq 0) {
-            _Actioned "Action Successful: Firewall ban for $IP removed"
-            _LogEventMessage "Removed IP $IP from firewall rules"  REMOVE OK
+            _Actioned "UNBAN" $IP "Firewall ban removed"
+            _LogEventMessage "UNBAN: $IP - Firewall ban removed" REMOVE OK
         }
         else {
-            $Message = "Action Failure: could not remove firewall rule for $IP,  error: `"$result`". Return code: $LASTEXITCODE"
-            _Error $Message
-            _LogEventMessage $Message REMOVE FAIL
+            _Error "UNBAN FAILED" $IP "Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE"
+            _LogEventMessage "UNBAN FAILED: $IP - Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" REMOVE FAIL
         }
     }
 }
@@ -294,178 +329,114 @@ function _UnbanOldRecords {
             $ReleaseDate = $inmate.Description.substring("Expire: ".Length)
 			
             if ($([int]([datetime]$ReleaseDate - (Get-Date)).TotalSeconds) -lt 0) {
-                _Debug "Unban old records: $IP looks old enough $(Get-Date $ReleaseDate -format G)"
+                _Debug "EXPIRED BAN" $IP "Ban expired at $(Get-Date $ReleaseDate -format G)"
                 _JailRelease $IP
             }
         }
     }
 }
 
-#Convert the TimeGenerated time into Epoch
-function _WMIDateStringToDateTime( [String] $iSt ) {
-    $iSt.Trim() > $null
-    $iYear = [Int32]::Parse($iSt.SubString( 0, 4))
-    $iMonth = [Int32]::Parse($iSt.SubString( 4, 2))
-    $iDay = [Int32]::Parse($iSt.SubString( 6, 2))
-    $iHour = [Int32]::Parse($iSt.SubString( 8, 2))
-    $iMinute = [Int32]::Parse($iSt.SubString(10, 2))
-    $iSecond = [Int32]::Parse($iSt.SubString(12, 2))
-    $iMilliseconds = 0
-    $iUtcOffsetMinutes = [Int32]::Parse($iSt.Substring(21, 4))
-    if ( $iUtcOffsetMinutes -ne 0 ) { $dtkind = [DateTimeKind]::Local }
-    else { $dtkind = [DateTimeKind]::Utc } 
-    $ReturnDate = New-Object -TypeName DateTime -ArgumentList $iYear, $iMonth, $iDay, $iHour, $iMinute, $iSecond, $iMilliseconds, $dtkind
-    return (Get-Date $ReturnDate -UFormat "%s")
-} 
-
-
-# Remove recorded access attempts, by IP, or expired records if no IP provided.
-function _ClearAttempts ($IP = 0) {
-    $Removes = @()
-    foreach ($a in $Entry.GetEnumerator()) {
-        if ($IP -eq 0) {
-            if ([int]$a.Value[1] + $CHECK_WINDOW -lt (Get-Date ((Get-Date).ToUniversalTime()) -UFormat "%s").replace(",", ".")) { $Removes += $a.Key }
-        }
-        else {
-            foreach ($a in $Entry.GetEnumerator()) { if ($a.Value[0] -eq $IP) {	$Removes += $a.Key } }
-        }
+function _TrackIP($IP) {
+    if ($TrackedIPs.ContainsKey($IP)) {
+        $TrackedIPs[$IP].Count++
+        $TrackedIPs[$IP].Timestamps.Add((Get-Date))
     }
-    foreach ($b in $Removes) { $Entry.Remove($b) }
-}
-
-################################################################################
-#Process input parameters
-if ($setting) { _Debug "wail2ban started. $setting" }
-
-#Display current configuration.
-if ($args -match "-config") { 
-    Write-Host "`nwail2ban is currently configured to: `n ban IPs for " -nonewline
-    for ($i = 1; $i -lt 5; $i++) { Write-Host ("" + [math]::pow(5, $i) + ", ") -foregroundcolor "cyan" -nonewline }
-    Write-Host "... $($MAX_BANDURATION/60) " -foregroundcolor "cyan" -nonewline
-    Write-Host " minutes, `n if more than " -nonewline
-    Write-Host $CHECK_COUNT -foregroundcolor "cyan" -nonewline
-    Write-Host " failed attempts are found in a " -nonewline
-    Write-Host $CHECK_WINDOW -foregroundcolor "cyan" -nonewline
-    Write-Host " second window. `nThis process will loop every time a new record appears. "
-    Write-Host "`nIt's currently checking:"
-    foreach ($event in $CheckEvents ) { "- " + $Event.EventLog + " event log for event ID " + $Event.EventDescription + " (Event " + $Event.EventID + ")" }
-    Write-Host "`nAnd we're whitelisting: "
-    foreach ($white in $whitelist) {
-        Write-Host "- $($white)" -foregroundcolor "cyan" -nonewline
-    }
-    Write-Host "in addition to any IPs present on the network interfaces on the machine"
-    exit
-} 
-
-# Release all current banned IPs
-if ($args -match "-jailbreak") {
-    _Actioned  "Jailbreak initiated by console. Removing ALL IPs currently banned"
-    $EnrichmentCentre = _GetJailList
-    if ($EnrichmentCentre) {
-        "`nAre you trying to escape? [chuckle]"
-        "Things have changed since the last time you left the building."
-        "What's going on out there will make you wish you were back in here."
-        " "
-        foreach ($subject in $EnrichmentCentre) {
-            $IP = $subject.name.substring($FirewallRulePrefix.length + 1)
-            _FirewallRemove $IP
+    else {
+        $TrackedIPs[$IP] = @{
+            Count = 1
+            Timestamps = [System.Collections.Generic.List[datetime]]::new()
         }
-        Clear-Content $BannedIPLog
+        $TrackedIPs[$IP].Timestamps.Add((Get-Date))
     }
-    else { "`nYou can't escape, you know. `n`n(No current firewall listings to remove.)" }
-    exit
+
+    # Remove old timestamps
+    $TrackedIPs[$IP].Timestamps.RemoveAll({$_.AddSeconds($CHECK_WINDOW) -lt (Get-Date)})
+    $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
+
+    if ($TrackedIPs[$IP].Count -ge $CHECK_COUNT) {
+        _JailLockup $IP
+        $TrackedIPs.Remove($IP)
+    }
 }
 
-# Show the inmates in the jail.
-if ($args -match "-jail") {
-    $inmates = _GetJailList
-    if ($inmates) {
-        "wail2ban currently banned listings: `n"
-        foreach ($a in $inmates) {
-            $IP = $a.name.substring($FirewallRulePrefix.length + 1)
-            $Expire = $a.description.substring("Expire: ".length)
-            "" + $IP.PadLeft(14) + " expires at $Expire"
+
+function _HandleCli {
+    if ($ListBans) {
+        $inmates = _GetJailList
+        if ($inmates) {
+            "wail2ban currently banned listings: `n"
+            foreach ($a in $inmates) {
+                $IP = $a.name.substring($FirewallRulePrefix.length + 1)
+                $Expire = $a.description.substring("Expire: ".length)
+                "" + $IP.PadLeft(14) + " expires at $Expire"
+            }
+            "`nThis is a listing of the current Windows Firewall with Advanced Security rules, starting with `"" + $FirewallRulePrefix + " *`""
         }
-        "`nThis is a listing of the current Windows Firewall with Advanced Security rules, starting with `"" + $FirewallRulePrefix + " *`""
+        else { "There are no currrently banned IPs" }
+        exit
     }
-    else { "There are no currrently banned IPs" }
 
-    exit
-} 
+    if ($UnbanIP) {
+        _Actioned "UNBAN" $UnbanIP "Unban IP invoked from command line"
+        _JailRelease $UnbanIP
+        (Get-Content $BannedIPLog) | Where-Object { $_ -notmatch $UnbanIP } | Set-Content $BannedIPLog # remove IP from ban log
+        exit
+    }
 
-
-#Unban specific IP. Remove associated schtask, if exists. 
-if ($args -match "-unban") {     
-    $IP = $args[ [array]::indexOf($args, "-unban") + 1]
-    _Actioned  "Unban IP invoked: going to unban $IP and remove from the log."
-    _JailRelease $IP
-    (Get-Content $BannedIPLog) | Where-Object { $_ -notmatch $IP } | Set-Content $BannedIPLog # remove IP from ban log
-    exit
+    if ($ClearAllBans) {
+        _Actioned "JAILBREAK" "wail2ban" "Jailbreak initiated by console. Removing ALL IPs currently banned"
+        $EnrichmentCentre = _GetJailList
+        if ($EnrichmentCentre) {
+            foreach ($subject in $EnrichmentCentre) {
+                $IP = $subject.name.substring($FirewallRulePrefix.length + 1)
+                _FirewallRemove $IP
+            }
+            Clear-Content $BannedIPLog
+        }
+        else { "No current firewall listings to remove." }
+        exit
+    }
 }
 
-#Display Help Message
-if ($args -match "-help") { 
-    _Help; exit
-}
+function Main {
+    _HandleCli
 
-#Display Help Message
-if ($args -match "-p") {
-    Write-Host $setting
-}
+    _Actioned "START" "wail2ban" "wail2ban invoked"
 
-################################################################################
-#Setup for the loop
+    _Actioned "CONFIG" "wail2ban" "Checking for a heap of events: "
+    $CheckEvents | ForEach-Object { _Actioned  "CONFIG" "wail2ban" " - $($_.EventLog) log event code $($_.EventID)" }
+    _Actioned "CONFIG" "wail2ban" "The Whitelist: $Whitelist"
+    _Actioned "CONFIG" "wail2ban" "The Self-list: $Selflist"
 
-$SinkName = "LoginAttempt"
-$Entry = @{ }
-$eventlist = "("
-foreach ($a in $CheckEvents) {
-    $eventlist += "(TargetInstance.EventCode=$($a.EventID) and TargetInstance.LogFile='$($a.EventLog)') OR "
-}
-$eventlist = $eventlist.substring(0, $eventlist.length - 4) + ")"
-$query = "SELECT * FROM __instanceCreationEvent WHERE TargetInstance ISA 'Win32_NTLogEvent' AND $eventlist"
+    _LogEventMessage "wail2ban invoked in $wail2banInstall. SelfList: $SelfList $Whitelist" ADD OK
+    _PickupBanDuration
 
-_Actioned "wail2ban invoked"
+    while ($true) {
+        $eventFilter = @{
+            LogName = $CheckEvents.EventLog | Get-Unique
+            ID = $CheckEvents.EventID | Get-Unique
+            StartTime = (Get-Date).AddSeconds(-$CHECK_WINDOW)
+        }
+        $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
 
-_Actioned "Checking for a heap of events: "
-$CheckEvents | ForEach-Object { _Actioned  " - $($_.EventLog) log event code $($_.EventID)" }
-_Actioned "The Whitelist: $Whitelist"
-_Actioned "The Self-list: $Selflist"
-
-_LogEventMessage "wail2ban invoked in $wail2banInstall. SelfList: $SelfList $Whitelist" ADD OK
-_PickupBanDuration
-
-
-################################################################################
-#Loop!
-
-Register-WMIEvent -Query $query -sourceidentifier $SinkName
-do {
-    #bedobedo
-    $new_event = Wait-Event -sourceidentifier $SinkName
-    $TheEvent = $new_event.SourceeventArgs.NewEvent.TargetInstance
-    Select-String $RegexIP -input $TheEvent.message -AllMatches | ForEach-Object { foreach ($a in $_.matches) {
-            $IP = $a.Value
-            if ($SelfList -match $IP) { _Debug "Whitelist of self-listed IPs! Do nothing. ($IP)" }
-            else {
-                $RecordID = $TheEvent.RecordNumber
-                $EventDate = _WMIDateStringToDateTime($TheEvent.TIMEGenerated)
-                $Entry.Add($RecordID, @($IP, $EventDate))
-
-                $IPCount = 0
-                foreach ($a in $Entry.Values) { if ($IP -eq $a[0]) { $IPCount++ } }
-                _Debug "$($TheEvent.LogFile) Log Event captured: ID $($RecordID), IP $IP, Event Code $($TheEvent.EventCode), Attempt #$($IPCount). "
-			
-                if ($IPCount -ge $CHECK_COUNT) {
-                    _JailLockup $IP
-                    _ClearAttempts $IP
+        foreach ($event in $events) {
+            $message = $event.Message
+            Select-String $RegexIP -input $message -AllMatches | ForEach-Object { 
+                foreach ($a in $_.matches) {
+                    $IP = $a.Value
+                    if ($SelfList -match $IP) { 
+                        _Debug "WHITELISTED" $IP "Whitelist of self-listed IPs! Do nothing." 
+                    } else {
+                        _TrackIP $IP
+                    }
                 }
-                _ClearAttempts
-                _UnbanOldRecords
             }
         }
+        _UnbanOldRecords
+        Start-Sleep -Seconds 5
     }
+}
 
-    Remove-Event -sourceidentifier $SinkName
 
-} while ($true)
+Main
+

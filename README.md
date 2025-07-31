@@ -20,8 +20,17 @@ installation
 Installing wail2ban is a case of a view simple tasks: 
 
  * copy all the repository files to a location on the client machine, e.g. `C:\scripts\wail2ban`
+ * Configure the `wail2ban_config.ini` file to monitor the event logs you are interested in. A default configuration is provided that monitors for failed RDP login attempts (Event ID 4625).
  * Using Task Scheduler, import the `start wail2ban onstartup.xml` file to automatically create a scheduled task to start the script when the machine boots. 
  * Initiate the script by running the `start wail2ban.bat` file. This is what the scheduled task starts. 
+
+Prerequisites
+-------------
+
+The script will check for the following prerequisites before running:
+* Administrative privileges
+* PowerShell version 5.1 or higher
+* PowerShell execution policy is not set to 'Restricted'
 
 commandline execution
 ---------------------
