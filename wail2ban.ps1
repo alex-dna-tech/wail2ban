@@ -97,14 +97,13 @@ New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]
 
 $BannedIPs = @{}
 $TrackedIPs = @{}
-$WhiteList = @()
+$Whitelist = @()
 
 $BLOCK_TYPE = "NETSH"
 
 # Define configuration variables
 $EventTypes = @("Security", "Application")
 $CheckEvents = @()
-$WhiteList = @()
 
 # Define event logs and IDs
 $SecurityEvents = @{
@@ -121,6 +120,7 @@ $WhitelistIPs = @(
     "192.168.1.1",  # Router gate
     "1.2.3.4" # External IP
 )
+$Whitelist += $WhitelistIPs
 
 # Create a DataTable to store event logs and IDs
 $CheckEventsTable = New-Object System.Data.DataTable
@@ -227,6 +227,7 @@ function _Netmask($MaskLength) {
   
 #check if IP is whitelisted
 function _Whitelisted($IP) {
+    $Whitelisted = $null
     foreach ($white in $Whitelist) {
         if ($IP -eq $white) { $Whitelisted = "Uniquely listed."; break }
         if ($white.Contains("/")) {
