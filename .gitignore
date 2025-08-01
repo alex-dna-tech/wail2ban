@@ -1,7 +1,6 @@
 bannedIPLog.ini
 public_html/
 .env
-.gemini
 
 # Editor directories and files
 .idea
