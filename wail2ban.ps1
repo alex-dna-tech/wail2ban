@@ -154,9 +154,7 @@ foreach ($EventType in $EventTypes) {
 
 #We also want to whitelist this machine's NICs.
 $SelfList = @() 
-foreach ($listing in ((ipconfig | findstr [0-9].\.))) {
-    if ($listing -match "IPv4" ) { $SelfList += $listing.Split()[-1] }
-} 
+$SelfList += (Get-NetIPAddress -AddressFamily IPv4).IPAddress
 
 ################################################################################
 # Functions
@@ -195,8 +193,7 @@ function _LogToFile ($type, $action, $ip, $reason) {
 	 
 #Get the current list of wail2ban bans
 function _GetJailList {
-    $fw = New-Object -ComObject hnetcfg.fwpolicy2
-    return $fw.rules | Where-Object { $_.name -match $FirewallRulePrefix } | Select-Object name, description
+    return Get-NetFirewallRule -DisplayName "$($FirewallRulePrefix)*" | Select-Object @{Name = 'name'; Expression = { $_.DisplayName } }, @{Name = 'description'; Expression = { $_.Description } }
 }
 
 # Confirm if rule exists.
@@ -232,7 +229,7 @@ function _Netmask($MaskLength) {
 function _Whitelisted($IP) {
     foreach ($white in $Whitelist) {
         if ($IP -eq $white) { $Whitelisted = "Uniquely listed."; break }
-        if ($white.contains("/")) {
+        if ($white.Contains("/")) {
             $Mask = _Netmask($white.Split("/")[1])
             $subnet = $white.Split("/")[0]
             if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq `
@@ -278,14 +275,14 @@ function _JailLockup ($IP, $ExpireDate) {
     $result = _Whitelisted($IP)
     if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
     else {
-        if (!$ExpireDate) {
-            $BanDuration = _GetBanDuration($IP)
-            $ExpireDate = (Get-Date).AddSeconds($BanDuration)
-        }
         if ((_RuleExists $IP) -eq "Yes") {
             _Warning "ALREADY BANNED" $IP "Attempted to ban already banned IP"
         }
         else {
+            if (!$ExpireDate) {
+                $BanDuration = _GetBanDuration($IP)
+                $ExpireDate = (Get-Date).AddSeconds($BanDuration)
+            }
             _FirewallAdd $IP $ExpireDate
         }
     }
