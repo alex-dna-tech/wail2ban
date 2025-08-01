@@ -130,11 +130,79 @@
         ],
         "status": "done",
         "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Correct `_TrackIP` Logic to Use a Sliding Time Window for Ban Evaluation",
+        "description": "Refactor the `_TrackIP` function to accurately count failed login attempts within a sliding time window (`$CHECK_WINDOW`). The current logic is flawed and can be evaded. The new implementation should add the timestamp of a new attempt *before* evaluating the ban condition. The check for `$CHECK_COUNT` must be performed against a list of all attempts that have occurred within the last `$CHECK_WINDOW` seconds from the current time. After the check, expired timestamps should be purged to manage memory.",
+        "status": "pending",
+        "dependencies": [
+          2,
+          6
+        ],
+        "priority": "medium",
+        "details": "The `_TrackIP` function's logic must be changed to the following sequence to ensure accurate sliding window evaluation:\n1. Add the timestamp of the new failed attempt to the IP's history array.\n2. Create a temporary, filtered list of all timestamps for that IP that fall within the configured `$CHECK_WINDOW` (e.g., `[System.DateTime]::UtcNow.AddSeconds(-$CHECK_WINDOW)`).\n3. Compare the count of this temporary, filtered list against `$CHECK_COUNT`.\n4. If the count meets or exceeds the threshold, trigger the ban action.\n5. After the evaluation is complete, the function can then proceed to clean up timestamps from the master tracking object that are older than the time window. This separation of evaluation and cleanup logic is critical to fixing the evasion flaw.",
+        "testStrategy": "Set a low threshold (e.g., `$CHECK_COUNT = 3`) and a short time window (e.g., `$CHECK_WINDOW = 60` seconds).\n1. **Test Ban Evasion Fix:** Generate two attempts at T=0s and T=30s. Then, at T=70s, generate a third attempt. The correct logic should evaluate only the attempts within the last 60 seconds (from T=10s to T=70s), which are the attempts at T=30s and T=70s. The count is 2, so no ban is issued. This confirms the sliding window works correctly and old attempts are properly ignored for the check.\n2. **Test Normal Expiration:** Generate two attempts (at T=0s, T=5s). Wait 70 seconds. Generate a third attempt at T=75s. The IP should NOT be banned, as the first two attempts have expired and are outside the current 60-second window.\n3. **Test Standard Ban:** Generate three attempts in rapid succession (e.g., at T=0s, T=5s, T=10s). The IP should be banned immediately on the third attempt, as all three fall within the 60-second window.",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Append New Timestamp Before Evaluation",
+            "description": "Modify the `_TrackIP` function to add the current UTC timestamp of a new failed attempt to the corresponding IP's history array. This action must be the first step performed on the tracking object to ensure the new attempt is included in the subsequent evaluation.",
+            "dependencies": [],
+            "details": "The first line of logic operating on the IP's data in `_TrackIP` should be to append `[System.DateTime]::UtcNow` to its timestamp list. This ensures the sliding window calculation is always based on the most up-to-date data.",
+            "status": "pending",
+            "testStrategy": "After a single simulated failed attempt, inspect the in-memory tracking object to confirm the new timestamp has been successfully added to the correct IP's list."
+          },
+          {
+            "id": 2,
+            "title": "Filter Timestamps into a Temporary List for the Sliding Window",
+            "description": "Implement logic to create a temporary, in-memory list of timestamps for the given IP that fall within the `$CHECK_WINDOW`. This list will be used exclusively for the ban evaluation.",
+            "dependencies": [
+              "11.1"
+            ],
+            "details": "Use a `Where-Object` filter on the IP's full timestamp array. The filter condition should select all timestamps greater than or equal to the calculated window start time (`[System.DateTime]::UtcNow.AddSeconds(-$CHECK_WINDOW)`).",
+            "status": "pending",
+            "testStrategy": "Manually populate an IP's timestamp array with entries both inside and outside the `$CHECK_WINDOW`. Execute the filter and assert that the resulting temporary list contains only the recent timestamps."
+          },
+          {
+            "id": 3,
+            "title": "Evaluate Ban Condition Using the Filtered List Count",
+            "description": "Compare the count of the temporary, filtered timestamp list against the `$CHECK_COUNT` configuration variable. This check will determine if the ban threshold has been met or exceeded within the sliding window.",
+            "dependencies": [
+              "11.2"
+            ],
+            "details": "Use an `if` statement to check if the `.Count` property of the temporary list created in the previous subtask is greater than or equal to `$CHECK_COUNT`.",
+            "status": "pending",
+            "testStrategy": "Set `$CHECK_COUNT` to 3. Test with a filtered list containing 2 items and verify the condition is false. Test again with a list containing 3 items and verify the condition is true."
+          },
+          {
+            "id": 4,
+            "title": "Trigger Ban Action if Threshold is Met",
+            "description": "If the evaluation condition is met, call the appropriate function to initiate the IP ban process (which includes checking the whitelist and creating the firewall rule).",
+            "dependencies": [
+              "11.3"
+            ],
+            "details": "Place the call to the existing ban function inside the `if` block from the previous subtask. Ensure the IP address is passed as an argument.",
+            "status": "pending",
+            "testStrategy": "Simulate enough failed attempts from a non-whitelisted IP to meet the threshold. Verify that the ban function is invoked, for example, by checking for the creation of a new firewall rule."
+          },
+          {
+            "id": 5,
+            "title": "Purge Expired Timestamps from the Master Tracking Object",
+            "description": "After the ban evaluation is complete (whether a ban was triggered or not), implement a cleanup step to remove all timestamps from the IP's master history list that are older than the `$CHECK_WINDOW`.",
+            "dependencies": [
+              "11.3"
+            ],
+            "details": "This logic should execute after the `if` block for the ban check. Re-assign the IP's timestamp list in the master tracking object to a filtered version of itself, keeping only the timestamps that fall within the current window. This prevents the list from growing indefinitely.",
+            "status": "pending",
+            "testStrategy": "Simulate several attempts, wait for some to become older than `$CHECK_WINDOW`, then trigger a new attempt. After the function runs, inspect the master tracking object and verify that the expired timestamps have been removed."
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-07-31T12:15:37.015Z",
-      "updated": "2025-07-31T12:51:42.850Z",
+      "updated": "2025-08-01T05:37:55.883Z",
       "description": "Tasks for master context"
     }
   }

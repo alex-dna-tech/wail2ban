@@ -12,3 +12,4 @@ wail2ban_log.log
 # OS specific
 .DS_Store
 
+.aider*

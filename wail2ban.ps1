@@ -443,19 +443,31 @@ function Main {
 
         $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
 
-        foreach ($event in $events) {
-            $message = $event.Message
-            Select-String $RegexIP -input $message -AllMatches | ForEach-Object { 
-                foreach ($a in $_.matches) {
-                    $IP = $a.Value
-                    if ($SelfList -match $IP) { 
-                        _Debug "WHITELISTED" $IP "Whitelist of self-listed IPs! Do nothing." 
-                    } else {
-                        _TrackIP $IP
+        if ($events) {
+            $ipEvents = @{} # Hashtable to store record IDs for each IP
+            foreach ($event in $events) {
+                $message = $event.Message
+                Select-String $RegexIP -input $message -AllMatches | ForEach-Object { 
+                    foreach ($a in $_.matches) {
+                        $IP = $a.Value
+                        if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP)) {
+                            if (-not $ipEvents.ContainsKey($IP)) {
+                                $ipEvents[$IP] = [System.Collections.Generic.HashSet[string]]::new()
+                            }
+                            $ipEvents[$IP].Add($event.RecordId)
+                        }
                     }
                 }
             }
+
+            foreach ($ip in $ipEvents.Keys) {
+                if ($ipEvents[$ip].Count -ge $CHECK_COUNT) {
+                    _Debug "THRESHOLD" $ip "IP hit threshold of $($ipEvents[$ip].Count)"
+                    _JailLockup $ip
+                }
+            }
         }
+
         _UnbanOldRecords
         Start-Sleep -Seconds 5
     }
