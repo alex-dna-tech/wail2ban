@@ -118,7 +118,7 @@ $ApplicationEvents = @{
 # Define whitelist IPs
 $WhitelistIPs = @(
     "192.168.1.1",  # Router gate
-    "123.456.789.123" # External IP
+    "1.2.3.4" # External IP
 )
 
 # Create a DataTable to store event logs and IDs
