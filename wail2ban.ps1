@@ -79,6 +79,7 @@ $DebugPreference = "continue"
 
 $CHECK_WINDOW = 600  # We check the most recent X seconds of log.        Default: 600
 $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default: 5
+$LOOP_DURATION = 5 # How often we check for new events, in seconds. Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
 
 $logFile = $PSScriptRoot + "\wail2ban_log.log"
@@ -368,8 +369,6 @@ function _TrackIP($IP) {
         $TrackedIPs[$IP].Timestamps.Add((Get-Date))
     }
 
-    Write-Host "TEST Tracker[$IP]:" ($TrackedIPs | Format-Table | Out-String)
-
     # Remove old timestamps
     $TrackedIPs[$IP].Timestamps.RemoveAll({
         $_ -is [datetime] -and $_.AddSeconds($CHECK_WINDOW) -lt (Get-Date)
@@ -438,38 +437,29 @@ function Main {
         $eventFilter = @{
             LogName = @($CheckEventsTable.EventLog | Get-Unique)
             ID = @($CheckEventsTable.EventID | Get-Unique)
-            StartTime = (Get-Date).AddSeconds(-$CHECK_WINDOW)
+            StartTime = (Get-Date).AddSeconds(-$LOOP_DURATION)
         }
 
         $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
 
         if ($events) {
-            $ipEvents = @{} # Hashtable to store record IDs for each IP
             foreach ($event in $events) {
                 $message = $event.Message
                 Select-String $RegexIP -input $message -AllMatches | ForEach-Object { 
                     foreach ($a in $_.matches) {
                         $IP = $a.Value
                         if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP)) {
-                            if (-not $ipEvents.ContainsKey($IP)) {
-                                $ipEvents[$IP] = [System.Collections.Generic.HashSet[string]]::new()
+                            if ((_RuleExists $IP) -eq "No") {
+                                _TrackIP $IP
                             }
-                            $ipEvents[$IP].Add($event.RecordId)
                         }
                     }
-                }
-            }
-
-            foreach ($ip in $ipEvents.Keys) {
-                if ($ipEvents[$ip].Count -ge $CHECK_COUNT) {
-                    _Debug "THRESHOLD" $ip "IP hit threshold of $($ipEvents[$ip].Count)"
-                    _JailLockup $ip
                 }
             }
         }
 
         _UnbanOldRecords
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds $LOOP_DURATION
     }
 }
 
