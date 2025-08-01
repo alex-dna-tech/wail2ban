@@ -1,9 +1,8 @@
 #wail2ban  statistics
-$wail2banInstall = "" + (Get-Location) + "\"
-$BannedIPLog = $wail2banInstall + "bannedIPLog.ini"
-$logFile = $wail2banInstall + "wail2ban_log.log"
+$BannedIPLog = $PSScriptRoot + "\bannedIPLog.ini"
+$logFile = $PSScriptRoot + "\wail2ban_log.log"
 
-$HTMLFile = $wail2banInstall + "public_html/index.html"
+$HTMLFile = $PSScriptRoot + "\public_html/index.html"
 function _Html ($a) { $a | out-file $HTMLFile -append }
 "" | out-file $HTMLFile; clear-content $HTMLFile
 

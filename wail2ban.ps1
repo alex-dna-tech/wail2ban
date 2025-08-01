@@ -36,6 +36,13 @@
     Author: glasnt
     License: MIT
 #>
+param (
+    [switch]$ListBans,
+    [string]$UnbanIP,
+    [switch]$ClearAllBans
+)
+
+
 # Prerequisite Checks
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error "This script requires administrative privileges. Please run it as an administrator."
@@ -53,12 +60,6 @@ if ($policy -eq 'Restricted') {
     Write-Error "The PowerShell execution policy is set to 'Restricted'. Please set it to 'RemoteSigned' or 'Unrestricted' to run this script."
     exit 1
 }
-
-param (
-    [switch]$ListBans,
-    [string]$UnbanIP,
-    [switch]$ClearAllBans
-)
 
 ################################################################################
 #                        _ _ ____  _                 
@@ -79,10 +80,10 @@ $DebugPreference = "continue"
 $CHECK_WINDOW = 600  # We check the most recent X seconds of log.        Default: 600
 $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
-$wail2banInstall = "$PSScriptRoot\"
-$logFile = $wail2banInstall + "wail2ban_log.log"
-$ConfigFile = $wail2banInstall + "wail2ban_config.ini"
-$BannedIPLog = $wail2banInstall + "bannedIPLog.ini"
+
+$logFile = $PSScriptRoot + "\wail2ban_log.log"
+$ConfigFile = $PSScriptRoot + "\wail2ban_config.ini"
+$BannedIPLog = $PSScriptRoot + "\bannedIPLog.ini"
 $RecordEventLog = "Application"     # Where we store our own event messages
 $FirewallRulePrefix = "wail2ban block:" # What we name our Rules
 $EventTypes = "Application,Security,System"	  #Event logs we allow to be processed
@@ -95,41 +96,60 @@ New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]
 
 $BannedIPs = @{}
 $TrackedIPs = @{}
-# Incoming event structure
-$CheckEvents = New-object system.data.datatable("CheckEvents")
-$null = $CheckEvents.columns.add("EventLog")
-$null = $CheckEvents.columns.add("EventID")
-$null = $CheckEvents.columns.add("EventDescription")
-	  
 $WhiteList = @()
 
 $BLOCK_TYPE = "NETSH"
 
-#Grep configuration file 
-switch -regex -file $ConfigFile {
-    "^\\[(.+)\\]$" {
-        $Header = $matches[1].Trim()
-    }
-    "^\s*([^#].+?)\s*=\s*(.*)" {
-        $Match1 = $matches[1]
-        $Match2 = $matches[2]
-		
-        if ( $EventTypes -match $Header ) {
-            $row = $CheckEvents.NewRow()
-            $row.EventLog = $Header
-            $row.EventID = $Match1
-            $row.EventDescription = $Match2
-            $CheckEvents.Rows.Add($row)
+# Define configuration variables
+$EventTypes = @("Security", "Application")
+$CheckEvents = @()
+$WhiteList = @()
+
+# Define event logs and IDs
+$SecurityEvents = @{
+    "4625" = "RDP Logins"
+    #"18456" = "MSSQL Logins"  # Uncomment to include MSSQL logins
+}
+
+$ApplicationEvents = @{
+    #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
+}
+
+# Define whitelist IPs
+$WhitelistIPs = @(
+    "192.168.1.1",  # Router gate
+    "123.456.789.123" # External IP
+)
+
+# Create a DataTable to store event logs and IDs
+$CheckEventsTable = New-Object System.Data.DataTable
+$CheckEventsTable.Columns.Add("EventLog") | Out-Null
+$CheckEventsTable.Columns.Add("EventID") | Out-Null
+$CheckEventsTable.Columns.Add("EventDescription") | Out-Null
+
+# Populate the DataTable with event logs and IDs
+foreach ($EventType in $EventTypes) {
+    switch ($EventType) {
+        "Security" {
+            foreach ($EventID in $SecurityEvents.Keys) {
+                $row = $CheckEventsTable.NewRow()
+                $row.EventLog = $EventType
+                $row.EventID = $EventID
+                $row.EventDescription = $SecurityEvents[$EventID]
+                $CheckEventsTable.Rows.Add($row)
+            }
         }
-        else {
-            switch ($Header) {
-                "Whitelist" { $WhiteList += $Match1; }
+       "Application" {
+            foreach ($EventID in $ApplicationEvents.Keys) {
+                $row = $CheckEventsTable.NewRow()
+                $row.EventLog = $EventType
+                $row.EventID = $EventID
+                $row.EventDescription = $ApplicationEvents[$EventID]
+                $CheckEventsTable.Rows.Add($row)
             }
         }
     }
-	
-} 
-
+}
 
 #We also want to whitelist this machine's NICs.
 $SelfList = @() 
@@ -163,13 +183,12 @@ function _Debug       ($action, $ip, $reason) { _LogToFile "D" $action $ip $reas
 #Log things to file and debug
 function _LogToFile ($type, $action, $ip, $reason) {
     $timestamp = (Get-Date -format u).replace("Z", "")
-    $output = "[$timestamp] $action: $ip - $reason"
+    $output = "[$timestamp] ${action}: $ip - $reason"
     if ($type -eq "A") { $output | Out-File $logfile -append }
     switch ($type) {
         "D" { Write-Debug $output }
         "W" { Write-Warning "WARNING: $output" }
         "E" { Write-Error "ERROR: $output" }
-        "A" { Write-Debug $output }
     }
 }
 	 
@@ -291,7 +310,7 @@ function _FirewallAdd ($IP, $ExpireDate) {
     if ($rule) {
         $result = Invoke-Expression $rule
         if ($LASTEXITCODE -eq 0) {
-            _Actioned "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
+            _Debug "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
             _LogEventMessage "BAN: $IP - Firewall rule added, expiring on $ExpireDate" ADD OK
         }
         else {
@@ -310,7 +329,7 @@ function _FirewallRemove ($IP) {
     if ($rule) {
         $result = Invoke-Expression $rule
         if ($LASTEXITCODE -eq 0) {
-            _Actioned "UNBAN" $IP "Firewall ban removed"
+            _Debug "UNBAN" $IP "Firewall ban removed"
             _LogEventMessage "UNBAN: $IP - Firewall ban removed" REMOVE OK
         }
         else {
@@ -349,8 +368,12 @@ function _TrackIP($IP) {
         $TrackedIPs[$IP].Timestamps.Add((Get-Date))
     }
 
+    Write-Host "TEST Tracker[$IP]:" ($TrackedIPs | Format-Table | Out-String)
+
     # Remove old timestamps
-    $TrackedIPs[$IP].Timestamps.RemoveAll({$_.AddSeconds($CHECK_WINDOW) -lt (Get-Date)})
+    $TrackedIPs[$IP].Timestamps.RemoveAll({
+        $_ -is [datetime] -and $_.AddSeconds($CHECK_WINDOW) -lt (Get-Date)
+    })
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
     if ($TrackedIPs[$IP].Count -ge $CHECK_COUNT) {
@@ -377,14 +400,14 @@ function _HandleCli {
     }
 
     if ($UnbanIP) {
-        _Actioned "UNBAN" $UnbanIP "Unban IP invoked from command line"
+        _Debug "UNBAN" $UnbanIP "Unban IP invoked from command line"
         _JailRelease $UnbanIP
         (Get-Content $BannedIPLog) | Where-Object { $_ -notmatch $UnbanIP } | Set-Content $BannedIPLog # remove IP from ban log
         exit
     }
 
     if ($ClearAllBans) {
-        _Actioned "JAILBREAK" "wail2ban" "Jailbreak initiated by console. Removing ALL IPs currently banned"
+        _Debug "JAILBREAK" "wail2ban" "Jailbreak initiated by console. Removing ALL IPs currently banned"
         $EnrichmentCentre = _GetJailList
         if ($EnrichmentCentre) {
             foreach ($subject in $EnrichmentCentre) {
@@ -401,22 +424,23 @@ function _HandleCli {
 function Main {
     _HandleCli
 
-    _Actioned "START" "wail2ban" "wail2ban invoked"
+    _Debug "START" "wail2ban" "wail2ban invoked"
 
-    _Actioned "CONFIG" "wail2ban" "Checking for a heap of events: "
-    $CheckEvents | ForEach-Object { _Actioned  "CONFIG" "wail2ban" " - $($_.EventLog) log event code $($_.EventID)" }
-    _Actioned "CONFIG" "wail2ban" "The Whitelist: $Whitelist"
-    _Actioned "CONFIG" "wail2ban" "The Self-list: $Selflist"
+    _Debug "CONFIG" "wail2ban" "Checking for a heap of events: "
+    $CheckEventsTable | ForEach-Object { _Debug  "CONFIG" "wail2ban" " - $($_.EventLog) log event code $($_.EventID)" }
+    _Debug "CONFIG" "wail2ban" "The Whitelist: $Whitelist"
+    _Debug "CONFIG" "wail2ban" "The Self-list: $Selflist"
 
-    _LogEventMessage "wail2ban invoked in $wail2banInstall. SelfList: $SelfList $Whitelist" ADD OK
+    _LogEventMessage "wail2ban invoked in $PSScriptRoot. SelfList: $SelfList $Whitelist" ADD OK
     _PickupBanDuration
 
     while ($true) {
         $eventFilter = @{
-            LogName = $CheckEvents.EventLog | Get-Unique
-            ID = $CheckEvents.EventID | Get-Unique
+            LogName = @($CheckEventsTable.EventLog | Get-Unique)
+            ID = @($CheckEventsTable.EventID | Get-Unique)
             StartTime = (Get-Date).AddSeconds(-$CHECK_WINDOW)
         }
+
         $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
 
         foreach ($event in $events) {
