@@ -231,11 +231,15 @@ function _Whitelisted($IP) {
     foreach ($white in $Whitelist) {
         if ($IP -eq $white) { $Whitelisted = "Uniquely listed."; break }
         if ($white.Contains("/")) {
-            $Mask = _Netmask($white.Split("/")[1])
-            $subnet = $white.Split("/")[0]
-            if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq `
-                (([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
-                $Whitelisted = "Contained in subnet $white"; break;
+            try {
+                $Mask = _Netmask($white.Split("/")[1])
+                $subnet = $white.Split("/")[0]
+                if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq `
+                    (([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
+                    $Whitelisted = "Contained in subnet $white"; break;
+                }
+            } catch {
+                _Warning "WHITELIST" $white "Invalid CIDR format in whitelist, skipping."
             }
         }
     }
@@ -275,6 +279,7 @@ function _GetBanDuration ($IP) {
 function _JailLockup ($IP, $ExpireDate) {
     $result = _Whitelisted($IP)
     if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
+    elseif ($SelfList -contains $IP) { _Warning "WHITELISTED" $IP "Attempted to ban self IP" }
     else {
         if ((_RuleExists $IP) -eq "Yes") {
             _Warning "ALREADY BANNED" $IP "Attempted to ban already banned IP"
