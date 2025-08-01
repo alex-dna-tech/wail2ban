@@ -166,6 +166,7 @@ function _LogEventMessage ($text, $task, $result) {
     switch ($task) {
         "ADD" { $logeventID = 1000 }
         "REMOVE" { $logeventID = 2000 }
+        "LOG" { $logeventID = 3000 }
     }
     switch ($result) {
         "FAIL" { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
@@ -319,7 +320,7 @@ function _FirewallAdd ($IP, $ExpireDate) {
         }
         else {
             _Error "BAN FAILED" $IP "Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE"
-            _LogEventMessage "BAN FAILED: $IP - Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" ADD FAIL
+            _LogEventMessage "BAN FAILED: $IP - Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" LOG FAIL
         }
     }
 }
@@ -338,7 +339,7 @@ function _FirewallRemove ($IP) {
         }
         else {
             _Error "UNBAN FAILED" $IP "Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE"
-            _LogEventMessage "UNBAN FAILED: $IP - Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" REMOVE FAIL
+            _LogEventMessage "UNBAN FAILED: $IP - Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" LOG FAIL
         }
     }
 }
@@ -433,7 +434,7 @@ function Main {
     _Debug "CONFIG" "wail2ban" "The Whitelist: $Whitelist"
     _Debug "CONFIG" "wail2ban" "The Self-list: $Selflist"
 
-    _LogEventMessage "wail2ban invoked in $PSScriptRoot. SelfList: $SelfList $Whitelist" ADD OK
+    _LogEventMessage "wail2ban invoked in $PSScriptRoot. SelfList: $SelfList $Whitelist" LOG OK
     _PickupBanDuration
 
     while ($true) {
