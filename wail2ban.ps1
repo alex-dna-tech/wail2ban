@@ -267,7 +267,7 @@ function _GetBanDuration ($IP) {
         $Setting = 0
         $BannedIPs.Add($IP, $Setting)
     }
-    $Setting++
+    $Setting += 1
     $BannedIPs.Set_Item($IP, $Setting)
     $BanDuration = [math]::min([math]::pow(5, $Setting) * 60, $MAX_BANDURATION)
     _Debug "IP $IP has the new setting of $setting, being $BanDuration seconds"
@@ -362,7 +362,7 @@ function _UnbanOldRecords {
 
 function _TrackIP($IP) {
     if ($TrackedIPs.ContainsKey($IP)) {
-        $TrackedIPs[$IP].Count++
+        $TrackedIPs[$IP].Count += 1
         $TrackedIPs[$IP].Timestamps.Add((Get-Date))
     }
     else {
@@ -376,7 +376,7 @@ function _TrackIP($IP) {
     # Remove old timestamps
     $TrackedIPs[$IP].Timestamps.RemoveAll({
         $_ -is [datetime] -and $_.AddSeconds($CHECK_WINDOW) -lt (Get-Date)
-    })
+    }) | Out-Null
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
     if ($TrackedIPs[$IP].Count -ge $CHECK_COUNT) {
