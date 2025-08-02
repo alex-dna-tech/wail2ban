@@ -99,8 +99,6 @@ $BannedIPs = @{}
 $TrackedIPs = @{}
 $Whitelist = @()
 
-$BLOCK_TYPE = "NETSH"
-
 # Define configuration variables
 $EventTypes = @("Security", "Application")
 $CheckEvents = @()
@@ -199,18 +197,12 @@ function _GetJailList {
 
 # Confirm if rule exists.
 function _RuleExists ($IP) {
-    switch ($BLOCK_TYPE) {
-        "NETSH" { $Rule = "netsh advfirewall firewall show rule name=`"$FirewallRulePrefix $IP`"" }
-        default { _Error "Don't have a known Block Type. $BLOCK_TYPE" }
+    $ruleName = "$FirewallRulePrefix $IP"
+    if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
+        return "Yes"
     }
-    if ($rule) {
-        $result = Invoke-Expression $rule
-        if ($result -match "----------") {
-            return "Yes"
-        }
-        else {
-            return "No"
-        }
+    else {
+        return "No"
     }
 }
 
@@ -308,39 +300,33 @@ function _JailRelease ($IP) {
 # Add the Firewall Rule
 function _FirewallAdd ($IP, $ExpireDate) {
     $Expire = (Get-Date $ExpireDate -format u).replace("Z", "")
-    switch ($BLOCK_TYPE) {
-        "NETSH" { $Rule = "netsh advfirewall firewall add rule name=`"$FirewallRulePrefix $IP`" dir=in protocol=any action=block remoteip=$IP description=`"Expire: $Expire`"" }
-        default { _Error "Don't have a known Block Type. $BLOCK_TYPE" }
+    $ruleName = "$FirewallRulePrefix $IP"
+    $description = "Expire: $Expire"
+
+    try {
+        New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol Any -Action Block -RemoteAddress $IP -Description $description -ErrorAction Stop
+        _Debug "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
+        _LogEventMessage "BAN: $IP - Firewall rule added, expiring on $ExpireDate" ADD OK
     }
-    if ($rule) {
-        $result = Invoke-Expression $rule
-        if ($LASTEXITCODE -eq 0) {
-            _Debug "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
-            _LogEventMessage "BAN: $IP - Firewall rule added, expiring on $ExpireDate" ADD OK
-        }
-        else {
-            _Error "BAN FAILED" $IP "Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE"
-            _LogEventMessage "BAN FAILED: $IP - Could not add firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" LOG FAIL
-        }
+    catch {
+        $errorMessage = $_.Exception.Message
+        _Error "BAN FAILED" $IP "Could not add firewall rule. Error: `"$errorMessage`""
+        _LogEventMessage "BAN FAILED: $IP - Could not add firewall rule. Error: `"$errorMessage`"" LOG FAIL
     }
 }
 
 # Remove the Filewall Rule
 function _FirewallRemove ($IP) {
-    switch ($BLOCK_TYPE) {
-        "NETSH" { $Rule = "netsh advfirewall firewall delete rule name=`"$FirewallRulePrefix $IP`"" }
-        default { _Error "Don't have a known Block Type. $BLOCK_TYPE" }
+    $ruleName = "$FirewallRulePrefix $IP"
+    try {
+        Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction Stop
+        _Debug "UNBAN" $IP "Firewall ban removed"
+        _LogEventMessage "UNBAN: $IP - Firewall ban removed" REMOVE OK
     }
-    if ($rule) {
-        $result = Invoke-Expression $rule
-        if ($LASTEXITCODE -eq 0) {
-            _Debug "UNBAN" $IP "Firewall ban removed"
-            _LogEventMessage "UNBAN: $IP - Firewall ban removed" REMOVE OK
-        }
-        else {
-            _Error "UNBAN FAILED" $IP "Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE"
-            _LogEventMessage "UNBAN FAILED: $IP - Could not remove firewall rule. Error: `"$result`". Return code: $LASTEXITCODE" LOG FAIL
-        }
+    catch {
+        $errorMessage = $_.Exception.Message
+        _Error "UNBAN FAILED" $IP "Could not remove firewall rule. Error: `"$errorMessage`""
+        _LogEventMessage "UNBAN FAILED: $IP - Could not remove firewall rule. Error: `"$errorMessage`"" LOG FAIL
     }
 }
 
