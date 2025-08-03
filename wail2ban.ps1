@@ -70,7 +70,10 @@ if ($policy -eq 'Restricted') {
 #   
 ################################################################################
 
-$DebugPreference = "continue"
+$DebugPreference = "SilentlyContinue"  # Suppress debug output
+# $DebugPreference = "Continue"          # Show debug output, keep running
+# $DebugPreference = "Inquire"           # Ask what to do on debug output
+# $DebugPreference = "Stop"              # Stop execution on debug output
 
 
 ################################################################################
@@ -82,11 +85,9 @@ $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default
 $LOOP_DURATION = 5 # How often we check for new events, in seconds. Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
 
-$ConfigFile = $PSScriptRoot + "\wail2ban_config.ini"
 $BannedIPsStateFile = $PSScriptRoot + "\bannedIPs.json"
 $RecordEventLog = "Application"     # Where we store our own event messages
 $FirewallRulePrefix = "wail2ban block:" # What we name our Rules
-$EventTypes = "Application,Security,System"	  #Event logs we allow to be processed
 
 ################################################################################
 #  End of Configurable Variables
@@ -130,6 +131,7 @@ $CheckEventsTable.Columns.Add("EventID") | Out-Null
 $CheckEventsTable.Columns.Add("EventDescription") | Out-Null
 
 # Populate the DataTable with event logs and IDs
+# Foreach requires refactor: repetiotion. AI!
 foreach ($EventType in $EventTypes) {
     switch ($EventType) {
         "Security" {
@@ -186,12 +188,12 @@ function _LogEventMessage ($text, $task, $result) {
 }
 
 #Log type functions
-function _Error       ($action, $ip, $reason) { _LogToFile "E" $action $ip $reason }
-function _Warning     ($action, $ip, $reason) { _LogToFile "W" $action $ip $reason }
-function _Debug       ($action, $ip, $reason) { _LogToFile "D" $action $ip $reason }
+function _Error       ($action, $ip, $reason) { _WriteLog "E" $action $ip $reason }
+function _Warning     ($action, $ip, $reason) { _WriteLog "W" $action $ip $reason }
+function _Debug       ($action, $ip, $reason) { _WriteLog "D" $action $ip $reason }
 
 #Log things to the console
-function _LogToFile ($type, $action, $ip, $reason) {
+function _WriteLog ($type, $action, $ip, $reason) {
     $timestamp = (Get-Date -format u).replace("Z", "")
     $output = "[$timestamp] ${action}: $ip - $reason"
     switch ($type) {
