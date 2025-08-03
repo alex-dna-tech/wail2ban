@@ -11,7 +11,7 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
 - **IP Detection and Banning**  
   Extracts IP addresses from event messages and bans them after a configurable threshold of failed attempts within a set time window.  
   _Why it's important_: Prevents repeated unauthorized access attempts from the same source.  
-  _How it works_: Parses event messages, tracks IPs, and applies Windows Firewall rules via `netsh`.
+  _How it works_: Parses event messages, tracks IPs, and applies Windows Firewall rules.
 
 - **Ban Management**  
   Allows users to list currently banned IPs, release specific IPs, or clear all bans.  
@@ -46,7 +46,7 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
 # Technical Architecture  
 - **System Components**  
   - PowerShell script (`wail2ban.ps1`)  
-  - Windows Firewall (via `netsh`)  
+  - Windows Firewall via PowerShell  
   - Event Log subsystem  
   - Configuration at the begining of file via powershell variables
   - Log events for audit trail
@@ -58,7 +58,7 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
 
 - **APIs and Integrations**  
   - Windows Event Log API via PowerShell  
-  - Windows Firewall via `netsh`  
+  - Windows Firewall via PowerShell  
 
 - **Infrastructure Requirements**  
   - Windows OS (Windows 10/11, Server 2016+)  
