@@ -84,7 +84,7 @@ $MAX_BANDURATION = 7776000 # 3 Months in seconds
 
 $logFile = $PSScriptRoot + "\wail2ban_log.log"
 $ConfigFile = $PSScriptRoot + "\wail2ban_config.ini"
-$BannedIPLog = $PSScriptRoot + "\bannedIPLog.ini"
+$BannedIPsStateFile = $PSScriptRoot + "\bannedIPs.json"
 $RecordEventLog = "Application"     # Where we store our own event messages
 $FirewallRulePrefix = "wail2ban block:" # What we name our Rules
 $EventTypes = "Application,Security,System"	  #Event logs we allow to be processed
@@ -252,16 +252,42 @@ function _Whitelisted($IP) {
     return $Whitelisted
 } 
 
-#Read in the saved file of settings. Only called on script start, such as after reboot
-function _PickupBanDuration {
-    if (Test-Path $BannedIPLog) {
-        Get-Content $BannedIPLog | ForEach-Object {
-            if (!$BannedIPs.ContainsKey($_.split(" ")[0])) { $BannedIPs.Add($_.split(" ")[0], $_.split(" ")[1]) }
+#Read in the saved file of settings. Only called on script start.
+function _LoadBannedIPsState {
+    if (Test-Path $BannedIPsStateFile) {
+        try {
+            $content = Get-Content $BannedIPsStateFile -Raw -ErrorAction Stop
+            if (-not ([string]::IsNullOrWhiteSpace($content))) {
+                $loadedIPs = $content | ConvertFrom-Json -ErrorAction Stop
+                if ($loadedIPs) {
+                     # $BannedIPs is a hashtable, ConvertFrom-Json returns PSCustomObject. We must convert it.
+                     foreach($prop in $loadedIPs.psobject.Properties) {
+                         $BannedIPs[$prop.Name] = $prop.Value
+                     }
+                }
+                _Debug "STATE" "wail2ban" "$($BannedIPs.Count) ban counts loaded from $BannedIPsStateFile"
+            }
         }
-        _Debug "$BannedIPLog ban counts loaded"
+        catch {
+            $errorMessage = $_.Exception.Message
+            _Error "STATE LOAD FAILED" "wail2ban" "Could not load or parse $BannedIPsStateFile. Error: `"$errorMessage`""
+        }
     }
-    else { _Debug "No IPs to collect from BannedIPLog" }
-} 
+    else { 
+        _Debug "STATE" "wail2ban" "No state file found at $BannedIPsStateFile"
+    }
+}
+
+#Save the current ban counts to the state file
+function _SaveBannedIPsState {
+    try {
+        $BannedIPs | ConvertTo-Json -Depth 5 | Out-File $BannedIPsStateFile -Encoding utf8 -ErrorAction Stop
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        _Error "STATE SAVE FAILED" "wail2ban" "Could not save state to $BannedIPsStateFile. Error: `"$errorMessage`""
+    }
+}
 
 #Get the ban time for an IP, in seconds
 function _GetBanDuration ($IP) {
@@ -276,8 +302,7 @@ function _GetBanDuration ($IP) {
     $BannedIPs.Set_Item($IP, $Setting)
     $BanDuration = [math]::min([math]::pow(5, $Setting) * 60, $MAX_BANDURATION)
     _Debug "IP $IP has the new setting of $setting, being $BanDuration seconds"
-    if (Test-Path $BannedIPLog) { clear-content $BannedIPLog } else { New-Item $BannedIPLog -type file }
-    $BannedIPs.keys | ForEach-Object { "$_ " + $BannedIPs.Get_Item($_) | Out-File $BannedIPLog -Append }
+    _SaveBannedIPsState
     return $BanDuration
 }
 
@@ -404,7 +429,11 @@ function _HandleCli {
     if ($UnbanIP) {
         _Debug "UNBAN" $UnbanIP "Unban IP invoked from command line"
         _JailRelease $UnbanIP
-        (Get-Content $BannedIPLog) | Where-Object { $_ -notmatch $UnbanIP } | Set-Content $BannedIPLog # remove IP from ban log
+        if ($BannedIPs.ContainsKey($UnbanIP)) {
+            $BannedIPs.Remove($UnbanIP) | Out-Null
+            _SaveBannedIPsState
+            _Debug "UNBAN" $UnbanIP "Removed from persistent ban list."
+        }
         exit
     }
 
@@ -416,7 +445,8 @@ function _HandleCli {
                 $IP = $subject.name.substring($FirewallRulePrefix.length + 1)
                 _FirewallRemove $IP
             }
-            Clear-Content $BannedIPLog
+            $BannedIPs.Clear()
+            _SaveBannedIPsState
         }
         else { "No current firewall listings to remove." }
         exit
@@ -424,6 +454,7 @@ function _HandleCli {
 }
 
 function Main {
+    _LoadBannedIPsState
     _HandleCli
 
     _Debug "START" "wail2ban" "wail2ban invoked"
@@ -434,7 +465,6 @@ function Main {
     _Debug "CONFIG" "wail2ban" "The Self-list: $Selflist"
 
     _LogEventMessage "wail2ban invoked in $PSScriptRoot. SelfList: $SelfList $Whitelist" LOG OK
-    _PickupBanDuration
 
     while ($true) {
         $eventFilter = @{
