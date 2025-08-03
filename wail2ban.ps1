@@ -131,35 +131,15 @@ $CheckEventsTable.Columns.Add("EventID") | Out-Null
 $CheckEventsTable.Columns.Add("EventDescription") | Out-Null
 
 # Populate the DataTable with event logs and IDs
-# Foreach requires refactor: repetiotion. AI!
 foreach ($EventType in $EventTypes) {
-    switch ($EventType) {
-        "Security" {
-            foreach ($EventID in $SecurityEvents.Keys) {
-                $row = $CheckEventsTable.NewRow()
-                $row.EventLog = $EventType
-                $row.EventID = $EventID
-                $row.EventDescription = $SecurityEvents[$EventID]
-                $CheckEventsTable.Rows.Add($row)
-            }
-        }
-       "Application" {
-            foreach ($EventID in $ApplicationEvents.Keys) {
-                $row = $CheckEventsTable.NewRow()
-                $row.EventLog = $EventType
-                $row.EventID = $EventID
-                $row.EventDescription = $ApplicationEvents[$EventID]
-                $CheckEventsTable.Rows.Add($row)
-            }
-        }
-        "System" {
-            foreach ($EventID in $SystemEvents.Keys) {
-                $row = $CheckEventsTable.NewRow()
-                $row.EventLog = $EventType
-                $row.EventID = $EventID
-                $row.EventDescription = $SystemEvents[$EventID]
-                $CheckEventsTable.Rows.Add($row)
-            }
+    $eventSource = Get-Variable -Name "$($EventType)Events" -ValueOnly -ErrorAction SilentlyContinue
+    if ($eventSource) {
+        foreach ($EventID in $eventSource.Keys) {
+            $row = $CheckEventsTable.NewRow()
+            $row.EventLog = $EventType
+            $row.EventID = $EventID
+            $row.EventDescription = $eventSource[$EventID]
+            $CheckEventsTable.Rows.Add($row)
         }
     }
 }
