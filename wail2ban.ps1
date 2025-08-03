@@ -82,7 +82,6 @@ $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default
 $LOOP_DURATION = 5 # How often we check for new events, in seconds. Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
 
-$logFile = $PSScriptRoot + "\wail2ban_log.log"
 $ConfigFile = $PSScriptRoot + "\wail2ban_config.ini"
 $BannedIPsStateFile = $PSScriptRoot + "\bannedIPs.json"
 $RecordEventLog = "Application"     # Where we store our own event messages
@@ -191,11 +190,10 @@ function _Error       ($action, $ip, $reason) { _LogToFile "E" $action $ip $reas
 function _Warning     ($action, $ip, $reason) { _LogToFile "W" $action $ip $reason }
 function _Debug       ($action, $ip, $reason) { _LogToFile "D" $action $ip $reason }
 
-#Log things to file and debug
+#Log things to the console
 function _LogToFile ($type, $action, $ip, $reason) {
     $timestamp = (Get-Date -format u).replace("Z", "")
     $output = "[$timestamp] ${action}: $ip - $reason"
-    if ($type -eq "A") { $output | Out-File $logfile -append }
     switch ($type) {
         "D" { Write-Debug $output }
         "W" { Write-Warning "WARNING: $output" }
