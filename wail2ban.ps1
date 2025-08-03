@@ -100,7 +100,7 @@ $TrackedIPs = @{}
 $Whitelist = @()
 
 # Define configuration variables
-$EventTypes = @("Security", "Application")
+$EventTypes = @("Security", "Application", "System")
 $CheckEvents = @()
 
 # Define event logs and IDs
@@ -110,6 +110,10 @@ $SecurityEvents = @{
 }
 
 $ApplicationEvents = @{
+    #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
+}
+
+$SystemEvents = @{
     #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
 }
 
@@ -144,6 +148,15 @@ foreach ($EventType in $EventTypes) {
                 $row.EventLog = $EventType
                 $row.EventID = $EventID
                 $row.EventDescription = $ApplicationEvents[$EventID]
+                $CheckEventsTable.Rows.Add($row)
+            }
+        }
+        "System" {
+            foreach ($EventID in $SystemEvents.Keys) {
+                $row = $CheckEventsTable.NewRow()
+                $row.EventLog = $EventType
+                $row.EventID = $EventID
+                $row.EventDescription = $SystemEvents[$EventID]
                 $CheckEventsTable.Rows.Add($row)
             }
         }
