@@ -34,7 +34,7 @@
 
 .NOTES
     Author: glasnt
-    License: MIT
+    License: BSD 3-Clause License
 #>
 param (
     [switch]$ListBans,
@@ -97,32 +97,26 @@ New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]
 
 $BannedIPs = @{}
 $TrackedIPs = @{}
-$Whitelist = @()
-
-# Define configuration variables
-$EventTypes = @("Security", "Application", "System")
-$CheckEvents = @()
 
 # Define event logs and IDs
-$SecurityEvents = @{
-    "4625" = "RDP Logins"
-    #"18456" = "MSSQL Logins"  # Uncomment to include MSSQL logins
-}
-
-$ApplicationEvents = @{
-    #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
-}
-
-$SystemEvents = @{
-    #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
+$EventsToTrack = @{
+    "Security" = @{
+        "4625" = "RDP Logins"
+        #"18456" = "MSSQL Logins"  # Uncomment to include MSSQL logins
+    }
+    "Application" = @{
+        #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
+    }
+    "System" = @{
+        #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
+    }
 }
 
 # Define whitelist IPs
 $WhitelistIPs = @(
-    "192.168.1.1",  # Router gate
-    "1.2.3.4" # External IP
+    # "192.168.1.0/24", 
+    # "1.2.3.4" 
 )
-$Whitelist += $WhitelistIPs
 
 # Create a DataTable to store event logs and IDs
 $CheckEventsTable = New-Object System.Data.DataTable
@@ -131,20 +125,18 @@ $CheckEventsTable.Columns.Add("EventID") | Out-Null
 $CheckEventsTable.Columns.Add("EventDescription") | Out-Null
 
 # Populate the DataTable with event logs and IDs
-foreach ($EventType in $EventTypes) {
-    $eventSource = Get-Variable -Name "$($EventType)Events" -ValueOnly -ErrorAction SilentlyContinue
-    if ($eventSource) {
-        foreach ($EventID in $eventSource.Keys) {
-            $row = $CheckEventsTable.NewRow()
-            $row.EventLog = $EventType
-            $row.EventID = $EventID
-            $row.EventDescription = $eventSource[$EventID]
-            $CheckEventsTable.Rows.Add($row)
-        }
+foreach ($EventType in $EventsToTrack.Keys) {
+    $eventSource = $EventsToTrack[$EventType]
+    foreach ($EventID in $eventSource.Keys) {
+        $row = $CheckEventsTable.NewRow()
+        $row.EventLog = $EventType
+        $row.EventID = $EventID
+        $row.EventDescription = $eventSource[$EventID]
+        $CheckEventsTable.Rows.Add($row)
     }
 }
 
-#We also want to whitelist this machine's NICs.
+# We also want to whitelist this machine's NICs.
 $SelfList = @() 
 $SelfList += (Get-NetIPAddress -AddressFamily IPv4).IPAddress
 
@@ -167,12 +159,12 @@ function _LogEventMessage ($text, $task, $result) {
     $event.WriteEntry($text, $eventType, $logeventID)
 }
 
-#Log type functions
+# Log type functions
 function _Error       ($action, $ip, $reason) { _WriteLog "E" $action $ip $reason }
 function _Warning     ($action, $ip, $reason) { _WriteLog "W" $action $ip $reason }
 function _Debug       ($action, $ip, $reason) { _WriteLog "D" $action $ip $reason }
 
-#Log things to the console
+# Log things to the console
 function _WriteLog ($type, $action, $ip, $reason) {
     $timestamp = (Get-Date -format u).replace("Z", "")
     $output = "[$timestamp] ${action}: $ip - $reason"
@@ -183,7 +175,7 @@ function _WriteLog ($type, $action, $ip, $reason) {
     }
 }
 	 
-#Get the current list of wail2ban bans
+# Get the current list of wail2ban bans
 function _GetJailList {
     return Get-NetFirewallRule -DisplayName "$($FirewallRulePrefix)*" | Select-Object @{Name = 'name'; Expression = { $_.DisplayName } }, @{Name = 'description'; Expression = { $_.Description } }
 }
@@ -194,7 +186,7 @@ function _RuleExists ($IP) {
     return [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
 }
 
-#Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
+# Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
 function _Netmask($MaskLength) {
     $IPAddress = [UInt32]([Convert]::ToUInt32($(("1" * $MaskLength).PadRight(32, "0")), 2))
     $DottedIP = $( For ($i = 3; $i -gt -1; $i--) {
@@ -206,7 +198,7 @@ function _Netmask($MaskLength) {
     Return [String]::Join('.', $DottedIP)
 }
   
-#check if IP is whitelisted
+# Check if IP is whitelisted
 function _Whitelisted($IP) {
     $Whitelisted = $null
     foreach ($white in $Whitelist) {
@@ -227,7 +219,7 @@ function _Whitelisted($IP) {
     return $Whitelisted
 } 
 
-#Read in the saved file of settings. Only called on script start.
+# Read in the saved file of settings. Only called on script start.
 function _LoadBannedIPsState {
     if (Test-Path $BannedIPsStateFile) {
         try {
@@ -253,7 +245,7 @@ function _LoadBannedIPsState {
     }
 }
 
-#Save the current ban counts to the state file
+# Save the current ban counts to the state file
 function _SaveBannedIPsState {
     try {
         $BannedIPs | ConvertTo-Json -Depth 5 | Out-File $BannedIPsStateFile -Encoding utf8 -ErrorAction Stop
@@ -264,7 +256,7 @@ function _SaveBannedIPsState {
     }
 }
 
-#Get the ban time for an IP, in seconds
+# Get the ban time for an IP, in seconds
 function _GetBanDuration ($IP) {
     if ($BannedIPs.ContainsKey($IP)) {
         [int]$Setting = $BannedIPs.Get_Item($IP)
@@ -343,7 +335,7 @@ function _FirewallRemove ($IP) {
     }
 }
 
-#Remove any expired bans
+# Remove any expired bans
 function _UnbanOldRecords {
     $jail = _GetJailList
     if ($jail) {
@@ -359,6 +351,7 @@ function _UnbanOldRecords {
     }
 }
 
+# Add function description. AI!
 function _TrackIP($IP) {
     if ($TrackedIPs.ContainsKey($IP)) {
         $TrackedIPs[$IP].Count += 1
