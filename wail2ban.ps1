@@ -70,8 +70,8 @@ if ($policy -eq 'Restricted') {
 #   
 ################################################################################
 
-$DebugPreference = "SilentlyContinue"  # Suppress debug output
-# $DebugPreference = "Continue"          # Show debug output, keep running
+$DebugPreference = "Continue"          # Show debug output, keep running
+# $DebugPreference = "SilentlyContinue"  # Suppress debug output
 # $DebugPreference = "Inquire"           # Ask what to do on debug output
 # $DebugPreference = "Stop"              # Stop execution on debug output
 
@@ -80,7 +80,7 @@ $DebugPreference = "SilentlyContinue"  # Suppress debug output
 #  Configurable Variables
 ################################################################################
 
-$CHECK_WINDOW = 600  # We check the most recent X seconds of log.        Default: 600
+$CHECK_WINDOW = 120  # We check the most recent X seconds of log.        Default: 120
 $CHECK_COUNT = 5    # Ban after this many failures in search period.     Default: 5
 $LOOP_DURATION = 5 # How often we check for new events, in seconds. Default: 5
 $MAX_BANDURATION = 7776000 # 3 Months in seconds
