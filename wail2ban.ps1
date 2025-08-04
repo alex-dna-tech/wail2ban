@@ -191,12 +191,7 @@ function _GetJailList {
 # Confirm if rule exists.
 function _RuleExists ($IP) {
     $ruleName = "$FirewallRulePrefix $IP"
-    if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
-        return "Yes"
-    }
-    else {
-        return "No"
-    }
+    return [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
 }
 
 #Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
@@ -292,7 +287,7 @@ function _JailLockup ($IP, $ExpireDate) {
     if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
     elseif ($SelfList -contains $IP) { _Warning "WHITELISTED" $IP "Attempted to ban self IP" }
     else {
-        if ((_RuleExists $IP) -eq "Yes") {
+        if (_RuleExists $IP) {
             _Warning "ALREADY BANNED" $IP "Attempted to ban already banned IP"
         }
         else {
@@ -307,7 +302,7 @@ function _JailLockup ($IP, $ExpireDate) {
 
 # Unban the IP (with checking)
 function _JailRelease ($IP) {
-    if ((_RuleExists $IP) -eq "No") {
+    if (-not (_RuleExists $IP)) {
         _Debug "NOT BANNED" $IP "Attempted to unban IP that is not banned"
     }
     else {
@@ -462,7 +457,7 @@ function Main {
                     foreach ($a in $_.matches) {
                         $IP = $a.Value
                         if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP)) {
-                            if ((_RuleExists $IP) -eq "No") {
+                            if (-not (_RuleExists $IP)) {
                                 _TrackIP $IP
                             }
                         }
