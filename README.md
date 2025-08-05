@@ -1,113 +1,85 @@
-wail2ban
-========
-
-[![No Maintenance Intended](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)
+# Wail2ban
 
 ![Saddest Whale](http://i.imgur.com/NVlsY.png "Saddest Whale")
 
-wail2ban is a windows port of the basic functionality of [fail2ban](http://www.fail2ban.org/), and combining elements of [ts_block](https://github.com/EvanAnderson/ts_block). 
+wail2ban is a Windows port of the basic functionality of [fail2ban](http://www.fail2ban.org/), inspired by elements of [ts_block](https://github.com/EvanAnderson/ts_block).
 
+## Overview
 
-overview
---------
+wail2ban monitors Windows Event Logs for failed login attempts from specified event IDs. When multiple failed attempts originate from the same IP within a configurable time window, it automatically creates temporary Windows Firewall rules to block further access from those IPs.
 
-wail2ban is a system that takes incoming failed access events for a customly configurable set of known event ids, and given sufficient failed attacks in a period of time, creates temporary firewall rules to block access. 
+## Installation
 
+To set up wail2ban:
 
-installation 
-------------
+1. Copy all repository files to a directory on your Windows machine, e.g., `C:\scripts\wail2ban`.
+2. Configure the `wail2ban.ps1` script, particularly the event log types and IDs to monitor, or modify the configuration as needed.
+3. Use Task Scheduler to create a task that runs `wail2ban.ps1` at startup:
+   - Import the provided `start-wail2ban-onstartup.xml` task definition.
+   - Set it to run with administrator privileges.
+4. Manually start the script by executing `wail2ban.ps1` or rely on the scheduled task.
 
-Installing wail2ban is a case of a view simple tasks: 
-
- * copy all the repository files to a location on the client machine, e.g. `C:\scripts\wail2ban`
- * Configure the `wail2ban_config.ini` file to monitor the event logs you are interested in. A default configuration is provided that monitors for failed RDP login attempts (Event ID 4625).
- * Using Task Scheduler, import the `start wail2ban onstartup.xml` file to automatically create a scheduled task to start the script when the machine boots. 
- * Initiate the script by running the `start wail2ban.bat` file. This is what the scheduled task starts. 
-
-Prerequisites
+prerequisites
 -------------
 
-The script will check for the following prerequisites before running:
-* Administrative privileges
-* PowerShell version 5.1 or higher
-* PowerShell execution policy is not set to 'Restricted'
+The script checks for and requires:
 
-commandline execution
----------------------
+- Administrative privileges (must be run as administrator)
+- PowerShell version 5.1 or higher
+- PowerShell execution policy set to 'RemoteSigned' or less restrictive
 
-wail2ban has `write-debug` things through it, just uncomment the `$DebugPreference` line to enable. This will output nice things to CMD, if running ad-hoc.
+usage
+-----
 
-There are also a number of options that can be run against the script to control it: 
- 
- * `-config` : dumps a parsed output of the configuration file to standard out, including timing and whitelist configurations. 
- * `-jail`   : shows the current set of banned IPs on the machine
- * `-jailbreak`: unbans every IP currently banned by the script. 
+Run `wail2ban.ps1` with optional parameters:
 
-technical overview 
-------------------
+- To list current banned IPs:
+  ```powershell
+  .\wail2ban.ps1 -ListBans
+  ```
+- To unban a specific IP:
+  ```powershell
+  .\wail2ban.ps1 -UnbanIP "X.X.X.X"
+  ```
+- To unban all IPs:
+  ```powershell
+  .\wail2ban.ps1 -ClearAllBans
+  ```
 
-Event logs for various software packages are configured to produce messages when failed connections occur. The contents of the events usually contain an IP, an a message something along the lines of "This IP failed to connect to your server."
+functional overview
+-------------------
 
-Typical examples of this include: 
+- Monitors specified event logs for certain Event IDs related to failed login attempts.
+- Tracks attempts from each IP address within a configurable time window (`$CHECK_WINDOW` seconds).
+- If an IP exceeds the attempt threshold (`$CHECK_COUNT`) within the window, it is banned:
+  - Adds a firewall rule with a name prefixed by `$FirewallRulePrefix`.
+  - The ban duration scales exponentially based on previous bans, with a maximum cap (`$MAX_BANDURATION` seconds).
+- Bans are automatically revoked after their expiry time, and rules are removed.
+- Supports whitelists for IPs that should never be banned.
+- Keeps state of bans in a JSON file to allow persistence across runs.
+- Provides CLI commands to list, unban, or clear bans.
 
- * Security Event ID 4625, "Windows Security Auditing". 
-  * `An account failed to log in. ... Source Network Address: 11.22.33.44`
+limitations & notes
+-------------------
 
-Database products also include these kind of events, such as: 
+- This script is intended for use on Windows systems where PowerShell 5.1+ and Windows Firewall are available.
+- The system needs to be run with administrator privileges.
+- The script relies on specific event IDs and log types; adjust the `$EventsToTrack` hashtable for your environment.
+- Ban durations are exponential but capped to avoid excessively long bans.
+- It does not run as a persistent service but can be scheduled to run at startup or on an interval.
 
- * Application Event ID 18456, "Microsoft SQL Server".
-  *  `Login failed for user 'sa'. Reason: Password did not match that for the login provided. [CLIENT: 11.22.33.44]`
+additional
+----------
 
-These events are produced any time someone mistypes a password, or similar. 
+You can extend or customize the script by tweaking:
 
-The issue occurs when automated brute-force entry systems attempt to access systems multiple times a second. 
+- `$EventsToTrack`: To monitor different logs or event IDs.
+- `$Whitelist`: To prevent banning certain IPs.
+- `$CHECK_WINDOW` and `$CHECK_COUNT`: To customize detection sensitivity.
+- The firewall rule naming conventions in `$FirewallRulePrefix`.
 
-what wail2ban does
-------------------
+Note: The script logs significant actions and errors, which can be retrieved by examining Windows Event Logs under the "Application" log with source "wail2ban".
 
-wail2ban is a real-time event sink for these messages. As messages come in, wail2ban takes note of the time of the attempt and the IP used in the attempt. Given enough attempts in a specific period of time, wail2ban will generate a firewall rule to block all access to the client machine for a certain period of time. 
+---
 
-In a default setup, if an IP attempts 5 failed passwords in a 2 minute period, they get banned from attempting again for a period of time.
-
-How long? Well, that depends on how many times they've been banned before!
-
-There is a file called BannnedIPLog.ini that will keep a count of how many times an IP has been banned. 
-
-The punishment time is based on the function `y=5^x`, where x is the amount of times it has been banned, and y is the amount of minutes it's banned for. 
-
-This allows for scaling of bans, but prevent permenant bans, which may cause issues in the future as IPs are reassigned around the blagosphere. 
-
-There is also a `$MAX_BANDURATION` in place, which means that an IP cannot be banned for more than 3 months. Given the ban duration function gives values of years at the 10th increment, it's better to cap things out.
-
-failsafes 
----------
-
-As with all automated systems, there can be some false-positives. 
-
-**Whitelists** - this script can be configured with a whitelist of IPs that it will never ban, such as a company IP block. 
-
-**Self-list** - the script automatically adds a set of IPs to the whitelist that it knows as not to ban, based on the configured static IPs on the host machine. That is, it will ignore attempts from itself (or event logs which list it's own IP in the message). 
-
-**Timeouts** - IPs are only banned for specific period of time. After this time, they are removed from the firewall by the script. The timeouts are parsed once a new failed attempt is captured by the system. This may mean that IPs are unbanned after their exact unlock time, but for sufficiently attacked systems, this difference is not a major issue.
-
-**Jailbreak** - a configuration called `-jailbreak` can be run against the script at any time to immediately remove all banned IPs. All their counters are reset, and it is as if the IP never tried to attack the machine.
-
-htmlgen
----------
-
-I've added a script that will grep the wail2ban log file, and generate some nice statistics, and show the top banned IPs by country. 
-[Sample Report](http://i.imgur.com/ufb9mvX.png)
-
-If you want to enable this, grok the main wail2ban.ps1 script for the call to `wail2ban_htmlgen.ps1`, and enable it (remove the comment)
-
-
-limitations
------------
-
-There can be improvements relating to the service-like execution of this script, so it's always running. This can be acheieved using something like [non-sucking service manager](http://nssm.cc/), but that is left as an exercise for the reader. 
-
-Update 2020: There have been several on and off repo communications saying this code is still useful! I don't have any way to test the following, but hopefully the following may help: 
- 
- * Thanks to Marco Jonas, `BLOCK_TYPE` is set to `netsh`, which I presume still exists.
- * Thanks to Gl0, you can add SSL RDP Login support with [this patch](https://github.com/glasnt/wail2ban/pull/13/files)
- * Thanks to kentuckytech, add `-executionpolicy bypass -file` to the .bat file if you require a bypass.
+For further customization or integration, review and modify the `wail2ban.ps1` script as needed.

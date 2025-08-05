@@ -351,7 +351,7 @@ function _UnbanOldRecords {
     }
 }
 
-# Add function description. AI!
+# Tracks failed login attempts from a given IP.
 function _TrackIP($IP) {
     if ($TrackedIPs.ContainsKey($IP)) {
         $TrackedIPs[$IP].Count += 1
@@ -377,7 +377,7 @@ function _TrackIP($IP) {
     }
 }
 
-
+# Handle script argupments
 function _HandleCli {
     if ($ListBans) {
         $inmates = _GetJailList

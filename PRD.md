@@ -30,7 +30,7 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
   - Power users securing personal or small business systems
 
 - **Key User Flows**  
-  1. Configure event IDs and thresholds in the script or config file  
+  1. Configure event IDs and thresholds in the script by the variables
   2. Run the script with administrative privileges  
   3. Monitor logs and firewall actions  
   4. Manage bans via command-line options or GUI (future enhancement)
@@ -65,7 +65,6 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
   - PowerShell 5.1+  
   - Admin privileges  
   - Enabled and accessible event logs  
-  - Functional `netsh`, `wmic`, `ipconfig` commands
 
 # Development Roadmap  
 - **MVP Requirements**  
@@ -83,6 +82,7 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
   - Security checks to prevent banning critical IPs  
   - Expanded help documentation and usage examples
   - Powershell script that creates Windows schedule task (optional)
+  - Powershell script that creates ban report to email with HTML markup (optional)
 
 # Logical Dependency Chain  
 1. **Foundation**  
@@ -93,7 +93,6 @@ wail2ban.ps1 is a PowerShell-based security automation tool designed to enhance 
    - Command-line interface with clear output  
    - Logging and ban management  
 3. **Buildable Features**  
-   - Config file support  
    - Whitelisting logic  
    - Error handling improvements  
    - Compatibility and performance tuning
