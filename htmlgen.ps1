@@ -1,16 +1,27 @@
-# Rewrite to use bannedIPs.json. AI!
-#
 #wail2ban  statistics
-$BannedIPLog = $PSScriptRoot + "\bannedIPLog.ini"
+$BannedIPsStateFile = $PSScriptRoot + "\bannedIPs.json"
 $logFile = $PSScriptRoot + "\wail2ban_log.log"
 
 $HTMLFile = $PSScriptRoot + "\public_html/index.html"
 function _Html ($a) { $a | out-file $HTMLFile -append }
 "" | out-file $HTMLFile; clear-content $HTMLFile
 
-$BannedIPs = @{ }; if (Test-Path $BannedIPLog) {
-    get-content $BannedIPLog | ForEach-Object {
-        if (!$BannedIPs.ContainsKey($_.split(" ")[0])) { $BannedIPs.Add($_.split(" ")[0], $_.split(" ")[1]) }
+$BannedIPs = @{ }
+if (Test-Path $BannedIPsStateFile) {
+    try {
+        $content = Get-Content $BannedIPsStateFile -Raw -ErrorAction Stop
+        if (-not ([string]::IsNullOrWhiteSpace($content))) {
+            $loadedIPs = $content | ConvertFrom-Json -ErrorAction Stop
+            if ($loadedIPs) {
+                # ConvertFrom-Json returns PSCustomObject. We must convert it to a hashtable.
+                foreach ($prop in $loadedIPs.psobject.Properties) {
+                    $BannedIPs[$prop.Name] = $prop.Value
+                }
+            }
+        }
+    }
+    catch {
+        Write-Warning "Could not load or parse $BannedIPsStateFile. Error: `"$($_.Exception.Message)`""
     }
 }
 
