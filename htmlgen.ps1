@@ -1,3 +1,5 @@
+# Rewrite to use bannedIPs.json. AI!
+#
 #wail2ban  statistics
 $BannedIPLog = $PSScriptRoot + "\bannedIPLog.ini"
 $logFile = $PSScriptRoot + "\wail2ban_log.log"
