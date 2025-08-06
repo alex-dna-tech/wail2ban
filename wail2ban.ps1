@@ -39,7 +39,8 @@
 param (
     [switch]$ListBans,
     [string]$UnbanIP,
-    [switch]$ClearAllBans
+    [switch]$ClearAllBans,
+    [switch]$html  # Add this new parameter
 )
 
 
@@ -379,6 +380,11 @@ function _TrackIP($IP) {
 
 # Handle script argupments
 function _HandleCli {
+    if ($html) {  # Add this condition
+        html-report
+        exit
+    }
+
     if ($ListBans) {
         $inmates = _GetJailList
         if ($inmates) {
@@ -419,6 +425,79 @@ function _HandleCli {
         else { "No current firewall listings to remove." }
         exit
     }
+}
+
+function html-report {
+    $reportPath = Join-Path $PSScriptRoot "report.html"
+    "" | Out-File $reportPath -Force
+    
+    function _Html ($a) { $a | Out-File $reportPath -Append }
+
+    # Email-compatible simple HTML
+    _Html "<!DOCTYPE html>"
+    _Html "<html><head><title>wail2ban Report</title></head><body style='font-family: Arial, sans-serif;'>"
+    _Html "<h1>wail2ban Ban Statistics</h1>"
+
+    # Get ban events from Application log
+    $banEvents = Get-WinEvent -LogName Application -ProviderName wail2ban | 
+        Where-Object {$_.Id -in (1000, 2000)} | 
+        Sort-Object TimeCreated
+
+    $ipStats = @{}
+    $totalBans = 0
+    $totalBanTime = 0
+
+    foreach ($event in $banEvents) {
+        if ($event.Id -eq 1000) {  # Ban added event
+            if ($event.Message -match '(\d+\.\d+\.\d+\.\d+).*expiring on ([\d-/:. ]+)') {
+                $ip = $matches[1]
+                $expireDate = [datetime]::ParseExact($matches[2], 'yyyy-MM-dd HH:mm:ss', $null)
+                $duration = ($expireDate - $event.TimeCreated).TotalSeconds
+                
+                if (-not $ipStats.ContainsKey($ip)) {
+                    $ipStats[$ip] = @{
+                        BanCount = 0
+                        TotalDuration = 0
+                    }
+                }
+                
+                $ipStats[$ip].BanCount++
+                $ipStats[$ip].TotalDuration += $duration
+                $totalBans++
+                $totalBanTime += $duration
+            }
+        }
+    }
+
+    # IP Statistics Table
+    _Html "<h2>IP Ban Statistics</h2>"
+    _Html "<table border='1' cellpadding='4' style='border-collapse: collapse;'>"
+    _Html "<tr><th>IP Address</th><th>Total Bans</th><th>Total Ban Time</th><th>Average Ban</th></tr>"
+    
+    foreach ($ip in $ipStats.Keys) {
+        $total = $ipStats[$ip].TotalDuration
+        $avg = $total / $ipStats[$ip].BanCount
+        _Html "<tr>"
+        _Html "<td>$ip</td>"
+        _Html "<td>$($ipStats[$ip].BanCount)</td>"
+        _Html "<td>$( [math]::Round($total/3600, 1) ) hours</td>"
+        _Html "<td>$( [math]::Round($avg/3600, 1) ) hours</td>"
+        _Html "</tr>"
+    }
+    
+    _Html "</table>"
+
+    # Summary Statistics
+    _Html "<h2>Summary Statistics</h2>"
+    _Html "<ul>"
+    _Html "<li>Total IPs banned: $($ipStats.Count)</li>"
+    _Html "<li>Total bans issued: $totalBans</li>"
+    _Html "<li>Total ban time: $( [math]::Round($totalBanTime/3600, 1) ) hours</li>"
+    _Html "<li>Average ban time per IP: $( if ($ipStats.Count -gt 0) { [math]::Round(($totalBanTime/$ipStats.Count)/3600, 1) } else { 0 } ) hours</li>"
+    _Html "</ul>"
+
+    _Html "</body></html>"
+    Write-Host "Report generated: $reportPath"
 }
 
 function Main {
