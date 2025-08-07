@@ -145,18 +145,14 @@ $SelfList += (Get-NetIPAddress -AddressFamily IPv4).IPAddress
 # Functions
 ################################################################################
 
-function _LogEventMessage ($text, $task, $result) {
-    $event = new-object System.Diagnostics.EventLog($RecordEventLog)
+function _LogEventMessage ($text, $task) {
+    $event = New-Object System.Diagnostics.EventLog($RecordEventLog)
     $event.Source = "wail2ban"
     switch ($task) {
-        "ADD" { $logeventID = 1000 }
-        "REMOVE" { $logeventID = 2000 }
-        "LOG" { $logeventID = 3000 }
+        "BAN" { $logeventID = 1000 }
+        "UNBAN" { $logeventID = 2000 }
     }
-    switch ($result) {
-        "FAIL" { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
-        default { $eventtype = [System.Diagnostics.EventLogEntryType]::Information }
-    }
+    $type = [System.Diagnostics.EventLogEntryType]::Information
     $event.WriteEntry($text, $eventType, $logeventID)
 }
 
@@ -202,18 +198,18 @@ function _Netmask($MaskLength) {
 # Check if IP is whitelisted
 function _Whitelisted($IP) {
     $Whitelisted = $null
-    foreach ($white in $Whitelist) {
-        if ($IP -eq $white) { $Whitelisted = "Uniquely listed."; break }
-        if ($white.Contains("/")) {
+    foreach ($wl in $Whitelist) {
+        if ($IP -eq $wl) { $Whitelisted = "Uniquely listed."; break }
+        if ($wl.Contains("/")) {
             try {
-                $Mask = _Netmask($white.Split("/")[1])
-                $subnet = $white.Split("/")[0]
+                $Mask = _Netmask($wl.Split("/")[1])
+                $subnet = $wl.Split("/")[0]
                 if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq `
                     (([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
-                    $Whitelisted = "Contained in subnet $white"; break;
+                    $Whitelisted = "Contained in subnet $wl"; break;
                 }
             } catch {
-                _Warning "WHITELIST" $white "Invalid CIDR format in whitelist, skipping."
+                _Warning "WHITELIST" $wl "Invalid CIDR format in whitelist, skipping."
             }
         }
     }
@@ -260,16 +256,16 @@ function _SaveBannedIPsState {
 # Get the ban time for an IP, in seconds
 function _GetBanDuration ($IP) {
     if ($BannedIPs.ContainsKey($IP)) {
-        [int]$Setting = $BannedIPs.Get_Item($IP)
+        [int]$count = $BannedIPs.Get_Item($IP)
     }
     else {
-        $Setting = 0
-        $BannedIPs.Add($IP, $Setting)
+        $count = 0
+        $BannedIPs.Add($IP, $count)
     }
-    $Setting += 1
-    $BannedIPs.Set_Item($IP, $Setting)
-    $BanDuration = [math]::min([math]::pow(5, $Setting) * 60, $MAX_BANDURATION)
-    _Debug "IP $IP has the new setting of $setting, being $BanDuration seconds"
+    $count += 1
+    $BannedIPs.Set_Item($IP, $count)
+    $BanDuration = [math]::min([math]::pow(5, $count) * 60, $MAX_BANDURATION)
+    _Debug "IP $IP has the new count of $count, being $BanDuration seconds"
     _SaveBannedIPsState
     return $BanDuration
 }
@@ -288,7 +284,17 @@ function _JailLockup ($IP, $ExpireDate) {
                 $BanDuration = _GetBanDuration($IP)
                 $ExpireDate = (Get-Date).AddSeconds($BanDuration)
             }
+
             _FirewallAdd $IP $ExpireDate
+
+            $jsonLog = @{
+                "IP" = $IP;
+                "BanCount" = $BannedIPs.Get_Item($IP);
+                "BanDurationSeconds" = $BanDuration;
+                "ExpireDate" = $ExpireDate
+            } | ConvertTo-Json -Compress
+            _LogEventMessage $jsonLog BAN
+
         }
     }
 }
@@ -312,12 +318,10 @@ function _FirewallAdd ($IP, $ExpireDate) {
     try {
         New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol Any -Action Block -RemoteAddress $IP -Description $description -ErrorAction Stop
         _Debug "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
-        _LogEventMessage "BAN: $IP - Firewall rule added, expiring on $ExpireDate" ADD OK
     }
     catch {
         $errorMessage = $_.Exception.Message
         _Error "BAN FAILED" $IP "Could not add firewall rule. Error: `"$errorMessage`""
-        _LogEventMessage "BAN FAILED: $IP - Could not add firewall rule. Error: `"$errorMessage`"" LOG FAIL
     }
 }
 
@@ -327,12 +331,11 @@ function _FirewallRemove ($IP) {
     try {
         Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction Stop
         _Debug "UNBAN" $IP "Firewall ban removed"
-        _LogEventMessage "UNBAN: $IP - Firewall ban removed" REMOVE OK
+        _LogEventMessage "UNBAN: $IP - Firewall ban removed" UNBAN
     }
     catch {
         $errorMessage = $_.Exception.Message
         _Error "UNBAN FAILED" $IP "Could not remove firewall rule. Error: `"$errorMessage`""
-        _LogEventMessage "UNBAN FAILED: $IP - Could not remove firewall rule. Error: `"$errorMessage`"" LOG FAIL
     }
 }
 
@@ -510,8 +513,6 @@ function Main {
     $CheckEventsTable | ForEach-Object { _Debug  "CONFIG" "wail2ban" " - $($_.EventLog) log event code $($_.EventID)" }
     _Debug "CONFIG" "wail2ban" "The Whitelist: $Whitelist"
     _Debug "CONFIG" "wail2ban" "The Self-list: $Selflist"
-
-    _LogEventMessage "wail2ban invoked in $PSScriptRoot. SelfList: $SelfList $Whitelist" LOG OK
 
     while ($true) {
         $eventFilter = @{
