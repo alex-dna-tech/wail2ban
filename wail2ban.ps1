@@ -477,10 +477,10 @@ function html-report {
     <table>
         <tr><th>IP Address</th><th>Count</th><th>Details</th></tr>
         $(if ($ipStats) {
-            $ipStats | ForEach-Object {
+            ($ipStats | ForEach-Object {
                 "<tr><td>$($_.IP)</td><td>$($_.Count)</td>" +
                 "<td><a href='https://www.abuseipdb.com/check/$($_.IP)' target='_blank'>View Details</a></td></tr>"
-            } -join "`n"
+            }) -join "`n"
         } else {
             "<tr><td colspan='3'>No events found</td></tr>"
         })
