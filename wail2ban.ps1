@@ -116,7 +116,7 @@ $EventsToTrack = @{
 }
 
 # Define whitelist IPs
-$WhitelistIPs = @(
+$Whitelist = @(
     # "192.168.1.0/24", 
     # "1.2.3.4" 
 )
@@ -148,13 +148,13 @@ $SelfList += (Get-NetIPAddress -AddressFamily IPv4).IPAddress
 ################################################################################
 
 function _LogEventMessage ($text, $task) {
-    $event = New-Object System.Diagnostics.EventLog($RecordEventLog)
-    $event.Source = "wail2ban"
+    $e = New-Object System.Diagnostics.EventLog($RecordEventLog)
+    $e.Source = "wail2ban"
     switch ($task) {
         "BAN" { $logeventID = 1000 }
         "UNBAN" { $logeventID = 2000 }
     }
-    $event.WriteEntry($text, [System.Diagnostics.EventLogEntryType]::Information, $logeventID)
+    $e.WriteEntry($text, [System.Diagnostics.EventLogEntryType]::Information, $logeventID)
 }
 
 # Log type functions
@@ -317,7 +317,7 @@ function _FirewallAdd ($IP, $ExpireDate) {
     $description = "Expire: $Expire"
 
     try {
-        New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol Any -Action Block -RemoteAddress $IP -Description $description -ErrorAction Stop
+        New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol Any -Action Block -RemoteAddress $IP -Description $description -ErrorAction Stop | Out-Null
         _Debug "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
     }
     catch {
@@ -330,7 +330,7 @@ function _FirewallAdd ($IP, $ExpireDate) {
 function _FirewallRemove ($IP) {
     $ruleName = "$FirewallRulePrefix $IP"
     try {
-        Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction Stop
+        Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction Stop | Out-Null
         _Debug "UNBAN" $IP "Firewall ban removed"
         _LogEventMessage "UNBAN: $IP - Firewall ban removed" UNBAN
     }
@@ -385,7 +385,7 @@ function _TrackIP($IP) {
 # Handle script argupments
 function _HandleCli {
     if ($html) {  # Add this condition
-        html-report
+        _Get-HTML-Report
         exit
     }
 
@@ -431,7 +431,7 @@ function _HandleCli {
     }
 }
 
-function html-report {
+function Get-HTML-Report {
     $startTime = (Get-Date).AddDays(-$ReportDays)
     $events = Get-WinEvent -FilterHashtable @{
         LogName      = 'Application'
@@ -441,11 +441,11 @@ function html-report {
     } -ErrorAction SilentlyContinue
 
     $jsonLog = @()
-    foreach ($event in $events) {
+    foreach ($e in $events) {
         try {
-            $jsonLog += $event.Message | ConvertFrom-Json
+            $jsonLog += $e.Message | ConvertFrom-Json
         } catch {
-            Write-Warning "Failed to parse message for event $($event.Id)"
+            Write-Warning "Failed to parse message for event $($e.Id)"
         }
     }
 
@@ -522,8 +522,8 @@ function Main {
         $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
 
         if ($events) {
-            foreach ($event in $events) {
-                $message = $event.Message
+            foreach ($e in $events) {
+                $message = $e.Message
                 Select-String $RegexIP -input $message -AllMatches | ForEach-Object { 
                     foreach ($a in $_.matches) {
                         $IP = $a.Value
