@@ -385,7 +385,7 @@ function _TrackIP($IP) {
 # Handle script argupments
 function _HandleCli {
     if ($html) {  # Add this condition
-        _Get-HTML-Report
+        _GetHTMLReport
         exit
     }
 
@@ -431,7 +431,7 @@ function _HandleCli {
     }
 }
 
-function Get-HTML-Report {
+function _GetHTMLReport {
     $startTime = (Get-Date).AddDays(-$ReportDays)
     $events = Get-WinEvent -FilterHashtable @{
         LogName      = 'Application'
@@ -443,14 +443,27 @@ function Get-HTML-Report {
     $jsonLog = @()
     foreach ($e in $events) {
         try {
-            $jsonLog += $e.Message | ConvertFrom-Json
+            $logObject = $e.Message | ConvertFrom-Json
+            $logObject | Add-Member -NotePropertyName TimeCreated -NotePropertyValue $e.TimeCreated
+            $jsonLog += $logObject
         } catch {
             Write-Warning "Failed to parse message for event $($e.Id)"
         }
     }
 
     $ipStats = $jsonLog | Group-Object -Property ip | 
-               Select-Object @{Name='IP'; Expression={$_.Name}}, Count | 
+               Select-Object @{Name='IP'; Expression={$_.Name}}, 
+                             @{Name='Count'; Expression={$_.Count}},
+                             @{Name='TotalBanDuration'; Expression={
+                                 if ($_.Count -gt 1) {
+                                     $firstBan = $_.Group[-1].TimeCreated
+                                     $lastBan = $_.Group[0].TimeCreated
+                                     $duration = $lastBan - $firstBan
+                                     "{0}d {1}h {2}m" -f $duration.Days, $duration.Hours, $duration.Minutes
+                                 } else {
+                                     "N/A"
+                                 }
+                             }} |
                Sort-Object Count -Descending
 
     $totalEvents = $jsonLog.Count
@@ -475,14 +488,14 @@ function Get-HTML-Report {
     
     <h2>IP Statistics</h2>
     <table>
-        <tr><th>IP Address</th><th>Count</th><th>Details</th></tr>
+        <tr><th>IP Address</th><th>Count</th><th>Total Ban Duration</th><th>Details</th></tr>
         $(if ($ipStats) {
             ($ipStats | ForEach-Object {
-                "<tr><td>$($_.IP)</td><td>$($_.Count)</td>" +
+                "<tr><td>$($_.IP)</td><td>$($_.Count)</td><td>$($_.TotalBanDuration)</td>" +
                 "<td><a href='https://www.abuseipdb.com/check/$($_.IP)' target='_blank'>View Details</a></td></tr>"
             }) -join "`n"
         } else {
-            "<tr><td colspan='3'>No events found</td></tr>"
+            "<tr><td colspan='4'>No events found</td></tr>"
         })
     </table>
     
