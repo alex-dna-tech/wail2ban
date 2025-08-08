@@ -490,8 +490,8 @@ function html-report {
     <table>
         <tr><th>Total Events</th><td>$totalEvents</td></tr>
         <tr><th>Unique IPs</th><td>$uniqueIPs</td></tr>
-        <tr><th>Earliest Event</th><td>$($earliestEvent.ToString('yyyy-MM-dd HH:mm:ss') ?? 'N/A')</td></tr>
-        <tr><th>Latest Event</th><td>$($latestEvent.ToString('yyyy-MM-dd HH:mm:ss') ?? 'N/A')</td></tr>
+        <tr><th>Earliest Event</th><td>$($(if ($earliestEvent) { $earliestEvent.ToString('yyyy-MM-dd HH:mm:ss') } else { 'N/A' }))</td></tr>
+        <tr><th>Latest Event</th><td>$($(if ($latestEvent) { $latestEvent.ToString('yyyy-MM-dd HH:mm:ss') } else { 'N/A' }))</td></tr>
     </table>
 </body>
 </html>
