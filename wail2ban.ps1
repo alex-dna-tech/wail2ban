@@ -36,11 +36,13 @@
     Author: glasnt
     License: BSD 3-Clause License
 #>
+[CmdletBinding()]
 param (
     [switch]$ListBans,
     [string]$UnbanIP,
     [switch]$ClearAllBans,
-    [switch]$html  # Add this new parameter
+    [switch]$html,
+    [int]$ReportDays = 7
 )
 
 
@@ -152,8 +154,7 @@ function _LogEventMessage ($text, $task) {
         "BAN" { $logeventID = 1000 }
         "UNBAN" { $logeventID = 2000 }
     }
-    $type = [System.Diagnostics.EventLogEntryType]::Information
-    $event.WriteEntry($text, $eventType, $logeventID)
+    $event.WriteEntry($text, [System.Diagnostics.EventLogEntryType]::Information, $logeventID)
 }
 
 # Log type functions
@@ -431,76 +432,73 @@ function _HandleCli {
 }
 
 function html-report {
-    $reportPath = Join-Path $PSScriptRoot "report.html"
-    "" | Out-File $reportPath -Force
-    
-    function _Html ($a) { $a | Out-File $reportPath -Append }
+    $startTime = (Get-Date).AddDays(-$ReportDays)
+    $events = Get-WinEvent -FilterHashtable @{
+        LogName      = 'Application'
+        ProviderName = 'wail2ban'
+        ID           = 1000
+        StartTime    = $startTime
+    } -ErrorAction SilentlyContinue
 
-    # Email-compatible simple HTML
-    _Html "<!DOCTYPE html>"
-    _Html "<html><head><title>wail2ban Report</title></head><body style='font-family: Arial, sans-serif;'>"
-    _Html "<h1>wail2ban Ban Statistics</h1>"
-
-    # Get ban events from Application log
-    $banEvents = Get-WinEvent -LogName Application -ProviderName wail2ban | 
-        Where-Object {$_.Id -in (1000, 2000)} | 
-        Sort-Object TimeCreated
-
-    $ipStats = @{}
-    $totalBans = 0
-    $totalBanTime = 0
-
-    foreach ($event in $banEvents) {
-        if ($event.Id -eq 1000) {  # Ban added event
-            if ($event.Message -match '(\d+\.\d+\.\d+\.\d+).*expiring on ([\d-/:. ]+)') {
-                $ip = $matches[1]
-                $expireDate = [datetime]::ParseExact($matches[2], 'yyyy-MM-dd HH:mm:ss', $null)
-                $duration = ($expireDate - $event.TimeCreated).TotalSeconds
-                
-                if (-not $ipStats.ContainsKey($ip)) {
-                    $ipStats[$ip] = @{
-                        BanCount = 0
-                        TotalDuration = 0
-                    }
-                }
-                
-                $ipStats[$ip].BanCount++
-                $ipStats[$ip].TotalDuration += $duration
-                $totalBans++
-                $totalBanTime += $duration
-            }
+    $jsonLog = @()
+    foreach ($event in $events) {
+        try {
+            $jsonLog += $event.Message | ConvertFrom-Json
+        } catch {
+            Write-Warning "Failed to parse message for event $($event.Id)"
         }
     }
 
-    # IP Statistics Table
-    _Html "<h2>IP Ban Statistics</h2>"
-    _Html "<table border='1' cellpadding='4' style='border-collapse: collapse;'>"
-    _Html "<tr><th>IP Address</th><th>Total Bans</th><th>Total Ban Time</th><th>Average Ban</th></tr>"
-    
-    foreach ($ip in $ipStats.Keys) {
-        $total = $ipStats[$ip].TotalDuration
-        $avg = $total / $ipStats[$ip].BanCount
-        _Html "<tr>"
-        _Html "<td>$ip</td>"
-        _Html "<td>$($ipStats[$ip].BanCount)</td>"
-        _Html "<td>$( [math]::Round($total/3600, 1) ) hours</td>"
-        _Html "<td>$( [math]::Round($avg/3600, 1) ) hours</td>"
-        _Html "</tr>"
-    }
-    
-    _Html "</table>"
+    $ipStats = $jsonLog | Group-Object -Property ip | 
+               Select-Object @{Name='IP'; Expression={$_.Name}}, Count | 
+               Sort-Object Count -Descending
 
-    # Summary Statistics
-    _Html "<h2>Summary Statistics</h2>"
-    _Html "<ul>"
-    _Html "<li>Total IPs banned: $($ipStats.Count)</li>"
-    _Html "<li>Total bans issued: $totalBans</li>"
-    _Html "<li>Total ban time: $( [math]::Round($totalBanTime/3600, 1) ) hours</li>"
-    _Html "<li>Average ban time per IP: $( if ($ipStats.Count -gt 0) { [math]::Round(($totalBanTime/$ipStats.Count)/3600, 1) } else { 0 } ) hours</li>"
-    _Html "</ul>"
+    $totalEvents = $jsonLog.Count
+    $uniqueIPs = $ipStats.Count
+    $earliestEvent = if ($jsonLog) { ($jsonLog.timestamp | Sort-Object | Select-Object -First 1) -as [datetime] }
+    $latestEvent = if ($jsonLog) { ($jsonLog.timestamp | Sort-Object | Select-Object -Last 1) -as [datetime] }
 
-    _Html "</body></html>"
-    Write-Host "Report generated: $reportPath"
+    $html = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WAIL2Ban Report</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>WAIL2Ban Report (Last $ReportDays Days)</h1>
+    
+    <h2>IP Statistics</h2>
+    <table>
+        <tr><th>IP Address</th><th>Count</th><th>Details</th></tr>
+        $(if ($ipStats) {
+            $ipStats | ForEach-Object {
+                "<tr><td>$($_.IP)</td><td>$($_.Count)</td>" +
+                "<td><a href='https://www.abuseipdb.com/check/$($_.IP)' target='_blank'>View Details</a></td></tr>"
+            } -join "`n"
+        } else {
+            "<tr><td colspan='3'>No events found</td></tr>"
+        })
+    </table>
+    
+    <h2>Total Statistics</h2>
+    <table>
+        <tr><th>Total Events</th><td>$totalEvents</td></tr>
+        <tr><th>Unique IPs</th><td>$uniqueIPs</td></tr>
+        <tr><th>Earliest Event</th><td>$($earliestEvent.ToString('yyyy-MM-dd HH:mm:ss') ?? 'N/A')</td></tr>
+        <tr><th>Latest Event</th><td>$($latestEvent.ToString('yyyy-MM-dd HH:mm:ss') ?? 'N/A')</td></tr>
+    </table>
+</body>
+</html>
+"@
+
+    $reportPath = Join-Path $PSScriptRoot "report.html"
+    $html | Out-File $reportPath -Force
 }
 
 function Main {
