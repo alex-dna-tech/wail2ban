@@ -57,6 +57,7 @@ param (
     [switch]$ListBans,
     [string]$UnbanIP,
     [switch]$ClearAllBans,
+    [switch]$Silent,
     [switch]$html,
     [int]$ReportDays = 7,
     [int]$CheckWindow = 120,
@@ -93,10 +94,8 @@ if ($policy -eq 'Restricted') {
 #   
 ################################################################################
 
-$DebugPreference = "Continue"          # Show debug output, keep running
-# $DebugPreference = "SilentlyContinue"  # Suppress debug output
-# $DebugPreference = "Inquire"           # Ask what to do on debug output
-# $DebugPreference = "Stop"              # Stop execution on debug output
+
+$DebugPreference = if ($Silent) { "SilentlyContinue" } else { "Continue" }
 
 
 ################################################################################
