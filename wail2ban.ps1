@@ -296,7 +296,7 @@ function _JailLockup ($IP, $ExpireDate) {
                 "IP" = $IP;
                 "BanCount" = $BannedIPs.Get_Item($IP);
                 "BanDurationSeconds" = $BanDuration;
-                "ExpireDate" = $ExpireDate
+                "ExpireDate" = $ExpireDate.ToString("o")
             } | ConvertTo-Json -Compress
             _LogEventMessage $jsonLog BAN
 
