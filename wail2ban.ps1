@@ -64,7 +64,9 @@ param (
     [int]$CheckWindow = 120,
     [int]$CheckCount = 5,
     [int]$LoopDuration = 5,
-    [int]$MaxBanDuration = 7776000
+    [int]$MaxBanDuration = 7776000,
+    [string]$EventsToTrack = "Security 4625",
+    [string]$WhiteList = "" 
 )
 
 
@@ -116,41 +118,30 @@ New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]
 $BannedIPs = @{}
 $TrackedIPs = @{}
 
-# Define event logs and IDs
-$EventsToTrack = @{
-    "Security" = @{
-        "4625" = "RDP Logins"
-        #"18456" = "MSSQL Logins"  # Uncomment to include MSSQL logins
-    }
-    "Application" = @{
-        #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
-    }
-    "System" = @{
-        #"EventID" = "Event Description"  # Add more event IDs and descriptions as needed
-    }
-}
-
 # Define whitelist IPs
-$Whitelist = @(
-    # "192.168.1.0/24", 
-    # "1.2.3.4" 
-)
+$Whitelist = $WhiteList -split '\s+' | Where-Object { $_ -ne "" }
 
 # Create a DataTable to store event logs and IDs
 $CheckEventsTable = New-Object System.Data.DataTable
 $CheckEventsTable.Columns.Add("EventLog") | Out-Null
 $CheckEventsTable.Columns.Add("EventID") | Out-Null
-$CheckEventsTable.Columns.Add("EventDescription") | Out-Null
 
-# Populate the DataTable with event logs and IDs
-foreach ($EventType in $EventsToTrack.Keys) {
-    $eventSource = $EventsToTrack[$EventType]
-    foreach ($EventID in $eventSource.Keys) {
-        $row = $CheckEventsTable.NewRow()
-        $row.EventLog = $EventType
-        $row.EventID = $EventID
-        $row.EventDescription = $eventSource[$EventID]
-        $CheckEventsTable.Rows.Add($row)
+# Split events string into components and validate pair structure
+$eventComponents = $EventsToTrack -split '\s+'
+if ($eventComponents.Count % 2 -ne 0) {
+    Write-Error "Invalid EventsToTrack format - must contain event pairs in 'LogName EventID' format"
+    exit 1
+}
+
+# Process each log/eventID pair
+for ($i = 0; $i -lt $eventComponents.Count; $i += 2) {
+    $logName = $eventComponents[$i]
+    $eventID = $eventComponents[$i + 1]
+    
+    if ($logName -in @("Security", "Application", "System")) {
+        $CheckEventsTable.Rows.Add($logName, $eventID)
+    } else {
+        Write-Error "Invalid event log type: $logName. Allowed values are Security, Application, System."
     }
 }
 
