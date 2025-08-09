@@ -490,8 +490,14 @@ function _GetHTMLReport {
     $ipStats = $jsonLog | Group-Object -Property ip | 
                Select-Object @{Name='IP'; Expression={$_.Name}}, 
                              @{Name='Count'; Expression={($_.Group | Measure-Object BanCount -Maximum).Maximum}},
-                             @{Name='TotalBanDuration'; Expression={($_.Group | Measure-Object BanDurationSeconds -Sum).Sum}} |
-               Sort-Object TotalBanDuration -Descending
+                             @{Name='TotalBanDuration'; Expression={
+                                 $totalSeconds = ($_.Group | Measure-Object BanDurationSeconds -Sum).Sum
+                                 $days = [math]::Floor($totalSeconds / 86400)
+                                 $hours = [math]::Floor(($totalSeconds % 86400) / 3600)
+                                 $minutes = [math]::Floor(($totalSeconds % 3600) / 60)
+                                 "$days d $hours h $minutes m"
+                             }} |
+               Sort-Object Count -Descending
 
     $totalEvents = $jsonLog.Count
     $uniqueIPs = $ipStats.Count
