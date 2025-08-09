@@ -60,6 +60,7 @@ param (
     [switch]$Silent,
     [switch]$html,
     [switch]$install,
+    [switch]$uninstall,
     [int]$ReportDays = 7,
     [int]$CheckWindow = 120,
     [int]$CheckCount = 5,
@@ -396,14 +397,25 @@ function _InstallScheduledTask {
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -Hidden
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
-    Register-ScheduledTask -TaskName $taskName -InputObject $task -Force
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
     Write-Host "Scheduled task 'wail2ban' installed successfully."
+}
+
+function _UninstallScheduledTask {
+    $taskName = "wail2ban"
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    Write-Host "Scheduled task 'wail2ban' uninstalled successfully."
 }
 
 # Handle script argupments
 function _HandleCli {
     if ($install) {
         _InstallScheduledTask
+        exit
+    }
+
+    if ($uninstall) {
+        _UninstallScheduledTask
         exit
     }
 
