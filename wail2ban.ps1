@@ -139,7 +139,7 @@ for ($i = 0; $i -lt $eventComponents.Count; $i += 2) {
     $eventID = $eventComponents[$i + 1]
     
     if ($logName -in @("Security", "Application", "System")) {
-        $CheckEventsTable.Rows.Add($logName, $eventID)
+        $CheckEventsTable.Rows.Add($logName, $eventID) | Out-Null
     } else {
         Write-Error "Invalid event log type: $logName. Allowed values are Security, Application, System."
     }
