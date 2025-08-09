@@ -16,41 +16,38 @@
 .PARAMETER ClearAllBans
     Removes all the IP addresses that have been banned by this script.
 
-.EXAMPLE
-    .\wail2ban.ps1
-    Starts the script in monitoring mode.
+.PARAMETER Silent
+    Runs the script without outputting messages to the console.
 
-.EXAMPLE
-    .\wail2ban.ps1 -ListBans
-    Lists all the currently banned IP addresses.
+.PARAMETER html
+    Generates an HTML report of the banned IPs.
 
-.EXAMPLE
-    .\wail2ban.ps1 -UnbanIP "1.2.3.4"
-    Removes the IP address "1.2.3.4" from the ban list.
+.PARAMETER install
+    Installs the scheduled task for the script.
 
-.EXAMPLE
-    .\wail2ban.ps1 -ClearAllBans
-    Removes all the IP addresses that have been banned by this script.
+.PARAMETER uninstall
+    Uninstalls the scheduled task for the script.
 
-.EXAMPLE
-    .\wail2ban.ps1 -CheckWindow 300
-    Sets the check window to 300 seconds (5 minutes).
+.PARAMETER ReportDays
+    Specifies the number of days to include in the report (default is 7).
 
-.EXAMPLE
-    .\wail2ban.ps1 -CheckCount 10
-    Sets the check count to 10 (ban after 10 failures).
+.PARAMETER CheckWindow
+    Specifies the time window in seconds to check for failed login attempts (default is 120).
 
-.EXAMPLE
-    .\wail2ban.ps1 -LoopDuration 10
-    Sets the loop duration to 10 seconds (check for new events every 10 seconds).
+.PARAMETER CheckCount
+    Specifies the number of failed login attempts before banning an IP (default is 5).
 
-.EXAMPLE
-    .\wail2ban.ps1 -MaxBanDuration 86400
-    Sets maximum ban duration to 1 day (86400 seconds)
+.PARAMETER LoopDuration
+    Specifies the duration in seconds between checks for new events (default is 5).
 
-.NOTES
-    Author: glasnt
-    License: BSD 3-Clause License
+.PARAMETER MaxBanDuration
+    Specifies the maximum duration in seconds for which an IP can be banned (default is 7776000).
+
+.PARAMETER EventsToTrack
+    Specifies the event logs and event IDs to monitor for failed login attempts (default is "Security 4625").
+
+.PARAMETER WhiteList
+    Specifies a list of IP addresses that should never be banned.
 #>
 [CmdletBinding()]
 param (
