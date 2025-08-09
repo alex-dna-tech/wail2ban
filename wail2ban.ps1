@@ -388,12 +388,14 @@ function _TrackIP($IP) {
     }
 }
 
+
 function _InstallScheduledTask {
     $taskName = "wail2ban"
-    $action = New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-ExecutionPolicy Bypass -File $($PSScriptRoot)\wail2ban.ps1"
+    $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File $($PSScriptRoot)\wail2ban.ps1 -Silent"
     $trigger = New-ScheduledTaskTrigger -AtStartup
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
-    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal
+    $settings = New-ScheduledTaskSettingsSet -Hidden
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
     Register-ScheduledTask -TaskName $taskName -InputObject $task -Force
     Write-Host "Scheduled task 'wail2ban' installed successfully."
 }
