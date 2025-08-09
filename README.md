@@ -9,18 +9,12 @@ wail2ban is a Windows port of the basic functionality of [fail2ban](http://www.f
 wail2ban monitors Windows Event Logs for failed login attempts from specified event IDs. When multiple failed attempts originate from the same IP within a configurable time window, it automatically creates temporary Windows Firewall rules to block further access from those IPs.
 
 ## Installation
+To install wail2ban:
 
-To set up wail2ban:
+1. Download or copy the `wail2ban.ps1` script to any folder.
+2. Run it with the `-install` parameter.
 
-1. Copy all repository files to a directory on your Windows machine, e.g., `C:\scripts\wail2ban`.
-2. Configure the `wail2ban.ps1` script, particularly the event log types and IDs to monitor, or modify the configuration as needed.
-3. Use Task Scheduler to create a task that runs `wail2ban.ps1` at startup:
-   - Import the provided `start-wail2ban-onstartup.xml` task definition.
-   - Set it to run with administrator privileges.
-4. Manually start the script by executing `wail2ban.ps1` or rely on the scheduled task.
-
-prerequisites
--------------
+## Prerequisites
 
 The script checks for and requires:
 
@@ -28,8 +22,7 @@ The script checks for and requires:
 - PowerShell version 5.1 or higher
 - PowerShell execution policy set to 'RemoteSigned' or less restrictive
 
-usage
------
+## Usage
 
 Run `wail2ban.ps1` with optional parameters:
 
@@ -37,30 +30,68 @@ Run `wail2ban.ps1` with optional parameters:
   ```powershell
   .\wail2ban.ps1 -ListBans
   ```
+
 - To unban a specific IP:
   ```powershell
   .\wail2ban.ps1 -UnbanIP "X.X.X.X"
   ```
+
 - To unban all IPs:
   ```powershell
   .\wail2ban.ps1 -ClearAllBans
   ```
 
-functional overview
--------------------
+- To run the script silently (no console messages):
+  ```powershell
+  .\wail2ban.ps1 -Silent
+  ```
+
+- To generate an HTML report of banned IPs:
+  ```powershell
+  .\wail2ban.ps1 -html
+  ```
+
+- To install the scheduled task to run at startup:
+  ```powershell
+  .\wail2ban.ps1 -install
+  ```
+
+- To uninstall the scheduled task:
+  ```powershell
+  .\wail2ban.ps1 -uninstall
+  ```
+
+### Parameters Overview
+
+- `-ListBans`: Lists all the currently banned IP addresses.
+- `-UnbanIP <IP>`: Removes the specified IP address from the ban list.
+- `-ClearAllBans`: Removes all the IP addresses that have been banned by this script.
+- `-Silent`: Runs the script without outputting messages to the console.
+- `-html`: Generates an HTML report of the banned IPs.
+- `-install`: Installs the scheduled task for the script to run at startup.
+- `-uninstall`: Uninstalls the scheduled task for the script.
+- `-ReportDays <int>`: Specifies the number of days to include in the report (default is 7).
+- `-CheckWindow <int>`: Specifies the time window in seconds to check for failed login attempts (default is 120).
+- `-CheckCount <int>`: Specifies the number of failed login attempts before banning an IP (default is 5).
+- `-LoopDuration <int>`: Specifies the duration in seconds between checks for new events (default is 5).
+- `-MaxBanDuration <int>`: Specifies the maximum duration in seconds for which an IP can be banned (default is 7776000).
+- `-EventsToTrack <string>`: Specifies the event logs and event IDs to monitor for failed login attempts (default is "Security 4625").
+- `-WhiteList <string>`: Specifies a list of IP addresses that should never be banned.
+
+## Functional Overview
 
 - Monitors specified event logs for certain Event IDs related to failed login attempts.
-- Tracks attempts from each IP address within a configurable time window (`$CHECK_WINDOW` seconds).
-- If an IP exceeds the attempt threshold (`$CHECK_COUNT`) within the window, it is banned:
+- Tracks attempts from each IP address within a configurable time window (`$CheckWindow` seconds).
+- If an IP exceeds the attempt threshold (`$CheckCount`) within the window, it is banned:
   - Adds a firewall rule with a name prefixed by `$FirewallRulePrefix`.
-  - The ban duration scales exponentially based on previous bans, with a maximum cap (`$MAX_BANDURATION` seconds).
+  - The ban duration scales exponentially based on previous bans, with a maximum cap (`$MaxBanDuration` seconds).
 - Bans are automatically revoked after their expiry time, and rules are removed.
 - Supports whitelists for IPs that should never be banned.
-- Keeps state of bans in a JSON file to allow persistence across runs.
+- Keeps the state of bans in a JSON file to allow persistence across runs.
 - Provides CLI commands to list, unban, or clear bans.
+- Generates HTML reports summarizing the bans and IP statistics.
 
-limitations & notes
--------------------
+## Limitations & Notes
 
 - This script is intended for use on Windows systems where PowerShell 5.1+ and Windows Firewall are available.
 - The system needs to be run with administrator privileges.
@@ -68,14 +99,13 @@ limitations & notes
 - Ban durations are exponential but capped to avoid excessively long bans.
 - It does not run as a persistent service but can be scheduled to run at startup or on an interval.
 
-additional
-----------
+## Additional
 
 You can extend or customize the script by tweaking:
 
 - `$EventsToTrack`: To monitor different logs or event IDs.
 - `$Whitelist`: To prevent banning certain IPs.
-- `$CHECK_WINDOW` and `$CHECK_COUNT`: To customize detection sensitivity.
+- `$CheckWindow` and `$CheckCount`: To customize detection sensitivity.
 - The firewall rule naming conventions in `$FirewallRulePrefix`.
 
 Note: The script logs significant actions and errors, which can be retrieved by examining Windows Event Logs under the "Application" log with source "wail2ban".
