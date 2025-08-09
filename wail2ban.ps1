@@ -59,6 +59,7 @@ param (
     [switch]$ClearAllBans,
     [switch]$Silent,
     [switch]$html,
+    [switch]$install,
     [int]$ReportDays = 7,
     [int]$CheckWindow = 120,
     [int]$CheckCount = 5,
@@ -396,8 +397,23 @@ function _TrackIP($IP) {
     }
 }
 
+function _InstallScheduledTask {
+    $taskName = "wail2ban"
+    $action = New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-ExecutionPolicy Bypass -File $($PSScriptRoot)\wail2ban.ps1"
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -Force
+    Write-Host "Scheduled task 'wail2ban' installed successfully."
+}
+
 # Handle script argupments
 function _HandleCli {
+    if ($install) {
+        _InstallScheduledTask
+        exit
+    }
+
     if ($html) {  # Add this condition
         _GetHTMLReport
         exit
