@@ -32,6 +32,22 @@
     .\wail2ban.ps1 -ClearAllBans
     Removes all the IP addresses that have been banned by this script.
 
+.EXAMPLE
+    .\wail2ban.ps1 -CheckWindow 300
+    Sets the check window to 300 seconds (5 minutes).
+
+.EXAMPLE
+    .\wail2ban.ps1 -CheckCount 10
+    Sets the check count to 10 (ban after 10 failures).
+
+.EXAMPLE
+    .\wail2ban.ps1 -LoopDuration 10
+    Sets the loop duration to 10 seconds (check for new events every 10 seconds).
+
+.EXAMPLE
+    .\wail2ban.ps1 -MaxBanDuration 86400
+    Sets maximum ban duration to 1 day (86400 seconds)
+
 .NOTES
     Author: glasnt
     License: BSD 3-Clause License
@@ -42,7 +58,11 @@ param (
     [string]$UnbanIP,
     [switch]$ClearAllBans,
     [switch]$html,
-    [int]$ReportDays = 7
+    [int]$ReportDays = 7,
+    [int]$CheckWindow = 120,
+    [int]$CheckCount = 5,
+    [int]$LoopDuration = 5,
+    [int]$MaxBanDuration = 7776000
 )
 
 
@@ -82,11 +102,6 @@ $DebugPreference = "Continue"          # Show debug output, keep running
 ################################################################################
 #  Configurable Variables
 ################################################################################
-
-$CHECK_WINDOW = 120  # We check the most recent X seconds of log.        Default: 120
-$CHECK_COUNT = 5    # Ban after this many failures in search period.     Default: 5
-$LOOP_DURATION = 5 # How often we check for new events, in seconds. Default: 5
-$MAX_BANDURATION = 7776000 # 3 Months in seconds
 
 $BannedIPsStateFile = $PSScriptRoot + "\bannedIPs.json"
 $RecordEventLog = "Application"     # Where we store our own event messages
@@ -265,7 +280,7 @@ function _GetBanDuration ($IP) {
     }
     $count += 1
     $BannedIPs.Set_Item($IP, $count)
-    $BanDuration = [math]::min([math]::pow(5, $count) * 60, $MAX_BANDURATION)
+    $BanDuration = [math]::min([math]::pow(5, $count) * 60, $MaxBanDuration)
     _Debug "IP $IP has the new count of $count, being $BanDuration seconds"
     _SaveBannedIPsState
     return $BanDuration
@@ -372,11 +387,11 @@ function _TrackIP($IP) {
 
     # Remove old timestamps
     $TrackedIPs[$IP].Timestamps.RemoveAll({
-        $_ -is [datetime] -and $_.AddSeconds($CHECK_WINDOW) -lt (Get-Date)
+        $_ -is [datetime] -and $_.AddSeconds($CheckWindow) -lt (Get-Date)
     }) | Out-Null
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
-    if ($TrackedIPs[$IP].Count -ge $CHECK_COUNT) {
+    if ($TrackedIPs[$IP].Count -ge $CheckCount) {
         _JailLockup $IP
         $TrackedIPs.Remove($IP)
     }
@@ -525,7 +540,7 @@ function Main {
         $eventFilter = @{
             LogName = @($CheckEventsTable.EventLog | Get-Unique)
             ID = @($CheckEventsTable.EventID | Get-Unique)
-            StartTime = (Get-Date).AddSeconds(-$LOOP_DURATION)
+            StartTime = (Get-Date).AddSeconds(-$LoopDuration)
         }
 
         $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
@@ -547,7 +562,7 @@ function Main {
         }
 
         _UnbanOldRecords
-        Start-Sleep -Seconds $LOOP_DURATION
+        Start-Sleep -Seconds $LoopDuration
     }
 }
 
