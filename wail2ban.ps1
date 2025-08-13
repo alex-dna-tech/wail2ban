@@ -185,7 +185,7 @@ function _GetJailList {
 # Confirm if rule exists.
 function _RuleExists ($IP) {
     $ruleName = "$FirewallRulePrefix $IP"
-    return [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
+    return (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0
 }
 
 # Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
@@ -320,6 +320,11 @@ function _FirewallAdd ($IP, $ExpireDate) {
     $ruleName = "$FirewallRulePrefix $IP"
     $description = "Expire: $Expire"
 
+    if (_RuleExists $IP) {
+        _Warning "DUPLICATE RULE" $IP "Firewall rule already exists. Skipping creation."
+        return
+    }
+
     try {
         New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol Any -Action Block -RemoteAddress $IP -Description $description -ErrorAction Stop | Out-Null
         _Debug "BAN" $IP "Firewall rule added, expiring on $ExpireDate"
@@ -381,7 +386,9 @@ function _TrackIP($IP) {
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
     if ($TrackedIPs[$IP].Count -ge $CheckCount) {
-        _JailLockup $IP
+        if (-not (_RuleExists $IP)) {
+            _JailLockup $IP
+        }
         $TrackedIPs.Remove($IP)
     }
 }
