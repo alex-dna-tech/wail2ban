@@ -119,27 +119,22 @@ $TrackedIPs = @{}
 # Define whitelist IPs
 $Whitelist = $WhiteList -split '\s+' | Where-Object { $_ -ne "" }
 
-# Create a DataTable to store event logs and IDs
-$CheckEventsTable = New-Object System.Data.DataTable
-$CheckEventsTable.Columns.Add("EventLog") | Out-Null
-$CheckEventsTable.Columns.Add("EventID") | Out-Null
-
 # Split events string into components and validate pair structure
+$CheckEventPairs = @()
 $eventComponents = $EventsToTrack -split '\s+'
 if ($eventComponents.Count % 2 -ne 0) {
     Write-Error "Invalid EventsToTrack format - must contain event pairs in 'LogName EventID' format"
     exit 1
 }
 
-# Process each log/eventID pair
 for ($i = 0; $i -lt $eventComponents.Count; $i += 2) {
     $logName = $eventComponents[$i]
-    $eventID = $eventComponents[$i + 1]
-    
+    $eventID = [int]$eventComponents[$i + 1]
     if ($logName -in @("Security", "Application", "System")) {
-        $CheckEventsTable.Rows.Add($logName, $eventID) | Out-Null
+        $CheckEventPairs += @{ LogName = $logName; EventID = $eventID }
     } else {
         Write-Error "Invalid event log type: $logName. Allowed values are Security, Application, System."
+        exit 1
     }
 }
 
@@ -276,12 +271,12 @@ function _GetBanDuration ($IP) {
 }
 
 # Ban the IP (with checking)
-function _JailLockup ($IP, $ExpireDate) {
+function _JailLockup ($IP, $ExpireDate = $null, $alreadyBanned = $false) {
     $result = _Whitelisted($IP)
     if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
     elseif ($SelfList -contains $IP) { _Warning "WHITELISTED" $IP "Attempted to ban self IP" }
     else {
-        if (_RuleExists $IP) {
+        if ($alreadyBanned) {
             _Warning "ALREADY BANNED" $IP "Attempted to ban already banned IP"
         }
         else {
@@ -367,7 +362,7 @@ function _UnbanOldRecords {
         foreach ($inmate in $jail) {
             $IP = $inmate.Name.substring($FirewallRulePrefix.length + 1)
             $ReleaseDate = $inmate.Description.substring("Expire: ".Length)
-			
+
             if ($([int]([datetime]$ReleaseDate - (Get-Date)).TotalSeconds) -lt 0) {
                 _Debug "EXPIRED BAN" $IP "Ban expired at $(Get-Date $ReleaseDate -format G)"
                 _JailRelease $IP
@@ -397,9 +392,8 @@ function _TrackIP($IP) {
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
     if ($TrackedIPs[$IP].Count -ge $CheckCount) {
-        if (-not (_RuleExists $IP)) {
-            _JailLockup $IP
-        }
+        $alreadyBanned = _RuleExists $IP
+        _JailLockup $IP $null $alreadyBanned
         $TrackedIPs.Remove($IP)
     }
 }
@@ -565,29 +559,34 @@ function Main {
     _Debug "START" "wail2ban" "wail2ban invoked"
 
     _Debug "CONFIG" "wail2ban" "Checking for a heap of events: "
-    $CheckEventsTable | ForEach-Object { _Debug  "CONFIG" "wail2ban" " - $($_.EventLog) log event code $($_.EventID)" }
+    $CheckEventPairs | ForEach-Object { _Debug "CONFIG" "wail2ban" " - $($_.LogName) log event code $($_.EventID)" }
     _Debug "CONFIG" "wail2ban" "The Whitelist: $Whitelist"
     _Debug "CONFIG" "wail2ban" "The Self-list: $Selflist"
 
     while ($true) {
-        $eventFilter = @{
-            LogName = @($CheckEventsTable.EventLog | Get-Unique)
-            ID = @($CheckEventsTable.EventID | Get-Unique)
-            StartTime = (Get-Date).AddSeconds(-$LoopDuration)
-        }
+        $now = Get-Date
 
-        $events = Get-WinEvent -FilterHashtable $eventFilter -ErrorAction SilentlyContinue
+        $StartTime = $now.AddSeconds(-$LoopDuration)
+
+        $events = @()
+        foreach ($pair in $CheckEventPairs) {
+            $filter = @{
+                LogName = $pair.LogName
+                ID = $pair.EventID
+                StartTime = $StartTime
+            }
+            $events += Get-WinEvent -FilterHashtable $filter -ErrorAction SilentlyContinue
+        }
 
         if ($events) {
             foreach ($e in $events) {
                 $message = $e.Message
-                Select-String $RegexIP -input $message -AllMatches | ForEach-Object { 
+                Select-String $RegexIP -input $message -AllMatches | ForEach-Object {
                     foreach ($a in $_.matches) {
                         $IP = $a.Value
-                        if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP)) {
-                            if (-not (_RuleExists $IP)) {
-                                _TrackIP $IP
-                            }
+                        $alreadyBanned = _RuleExists $IP
+                        if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP) -and -not $alreadyBanned) {
+                            _TrackIP $IP
                         }
                     }
                 }
