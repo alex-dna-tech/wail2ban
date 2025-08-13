@@ -312,6 +312,17 @@ function _JailRelease ($IP) {
     else {
         _FirewallRemove  $IP
     }
+    if ($BannedIPs.ContainsKey($IP)) {
+        $BannedIPs.Remove($IP) | Out-Null
+        _Debug "UNBAN" $IP "Removed from BannedIPs hashtable."
+    }
+
+    if ($TrackedIPs.ContainsKey($IP)) {
+        $TrackedIPs.Remove($IP) | Out-Null
+        _Debug "UNBAN" $IP "Removed from TrackedIPs hashtable."
+    }
+
+    _SaveBannedIPsState
 }
 
 # Add the Firewall Rule
@@ -428,7 +439,7 @@ function _HandleCli {
         exit
     }
 
-    if ($html) {  # Add this condition
+    if ($html) {
         _GetHTMLReport
         exit
     }
@@ -451,11 +462,6 @@ function _HandleCli {
     if ($UnbanIP) {
         _Debug "UNBAN" $UnbanIP "Unban IP invoked from command line"
         _JailRelease $UnbanIP
-        if ($BannedIPs.ContainsKey($UnbanIP)) {
-            $BannedIPs.Remove($UnbanIP) | Out-Null
-            _SaveBannedIPsState
-            _Debug "UNBAN" $UnbanIP "Removed from persistent ban list."
-        }
         exit
     }
 
