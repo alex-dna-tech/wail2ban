@@ -75,8 +75,8 @@ Run `wail2ban.ps1` with optional parameters:
 - `-CheckCount <int>`: Specifies the number of failed login attempts before banning an IP (default is 5).
 - `-LoopDuration <int>`: Specifies the duration in seconds between checks for new events (default is 5).
 - `-MaxBanDuration <int>`: Specifies the maximum duration in seconds for which an IP can be banned (default is 7776000).
-- `-EventsToTrack <string>`: Specifies the event logs and event IDs to monitor for failed login attempts. Format must be space-separated pairs of Log Name (Application, Security, System) and EventID (integer) (e.g., "Security 4625 Application 1000). Default is "Security 4625".
-- `-WhiteList <string>`: Specifies IP addresses that should never be banned. Format must be space-separated IPv4 addresses or CIDR notations (e.g., "192.168.0.1 192.168.1.0/24).
+- `-EventsToTrack <string>`: Specifies the event logs and event IDs to monitor for failed login attempts. Format must be space-separated pairs of Log Name (Application, Security, System) and EventID (integer) (e.g., "Security 4625 Application 1000"). Default is "Security 4625".
+- `-WhiteList <string>`: Specifies IP addresses that should never be banned. Format must be space-separated IPv4 addresses or CIDR notations (e.g., "192.168.0.1 192.168.1.0/24").
 
 ## Functional Overview
 

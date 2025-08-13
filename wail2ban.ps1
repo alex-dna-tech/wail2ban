@@ -360,7 +360,7 @@ function _UnbanOldRecords {
     }
 }
 
-# Tracks failed login attempts from a given IP.
+# Tracks failed login attempts from a given IP
 function _TrackIP($IP) {
     if ($TrackedIPs.ContainsKey($IP)) {
         $TrackedIPs[$IP].Count += 1
@@ -387,6 +387,7 @@ function _TrackIP($IP) {
 }
 
 
+# Install shchedule task
 function _InstallScheduledTask {
     $taskName = "wail2ban"
     # Unregister existing task if any
@@ -467,6 +468,7 @@ function _HandleCli {
     }
 }
 
+# Generate HTML report
 function _GetHTMLReport {
     $startTime = (Get-Date).AddDays(-$ReportDays)
     $events = Get-WinEvent -FilterHashtable @{
