@@ -123,7 +123,7 @@ $Whitelist = $WhiteList -split '\s+' | Where-Object { $_ -ne "" }
 $CheckEventPairs = @()
 $eventComponents = $EventsToTrack -split '\s+'
 if ($eventComponents.Count % 2 -ne 0) {
-    Write-Error "Invalid EventsToTrack format - must contain event pairs in 'LogName EventID' format"
+    Write-Error "Invalid EventsToTrack format - must contain event pairs in 'LogName1 EventID1 LogName2 EventID2' format"
     exit 1
 }
 
@@ -177,7 +177,7 @@ function _GetJailList {
     return Get-NetFirewallRule -DisplayName "$($FirewallRulePrefix)*" | Select-Object @{Name = 'name'; Expression = { $_.DisplayName } }, @{Name = 'description'; Expression = { $_.Description } }
 }
 
-# Confirm if rule exists.
+# Confirm if one or more rules exists.
 function _RuleExists ($IP) {
     $ruleName = "$FirewallRulePrefix $IP"
     return (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0
@@ -197,23 +197,23 @@ function _Netmask($MaskLength) {
   
 # Check if IP is whitelisted
 function _Whitelisted($IP) {
-    $Whitelisted = $null
+    $msg = $null
     foreach ($wl in $Whitelist) {
-        if ($IP -eq $wl) { $Whitelisted = "Uniquely listed."; break }
+        if ($IP -eq $wl) { $msg = "Uniquely listed."; break }
         if ($wl.Contains("/")) {
             try {
                 $Mask = _Netmask($wl.Split("/")[1])
                 $subnet = $wl.Split("/")[0]
                 if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq `
                     (([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
-                    $Whitelisted = "Contained in subnet $wl"; break;
+                    $msg = "Contained in subnet $wl"; break;
                 }
             } catch {
                 _Warning "WHITELIST" $wl "Invalid CIDR format in whitelist, skipping."
             }
         }
     }
-    return $Whitelisted
+    return $msg
 } 
 
 # Read in the saved file of settings. Only called on script start.
