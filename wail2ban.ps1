@@ -271,12 +271,12 @@ function _GetBanDuration ($IP) {
 }
 
 # Ban the IP (with checking)
-function _JailLockup ($IP, $ExpireDate = $null, $alreadyBanned = $false) {
+function _JailLockup ($IP, $ExpireDate = $null) {
     $result = _Whitelisted($IP)
     if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
     elseif ($SelfList -contains $IP) { _Warning "WHITELISTED" $IP "Attempted to ban self IP" }
     else {
-        if ($alreadyBanned) {
+        if (_RuleExists $IP) {
             _Warning "ALREADY BANNED" $IP "Attempted to ban already banned IP"
         }
         else {
@@ -392,8 +392,7 @@ function _TrackIP($IP) {
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
     if ($TrackedIPs[$IP].Count -ge $CheckCount) {
-        $alreadyBanned = _RuleExists $IP
-        _JailLockup $IP $null $alreadyBanned
+        _JailLockup $IP
         $TrackedIPs.Remove($IP)
     }
 }
@@ -584,8 +583,7 @@ function Main {
                 Select-String $RegexIP -input $message -AllMatches | ForEach-Object {
                     foreach ($a in $_.matches) {
                         $IP = $a.Value
-                        $alreadyBanned = _RuleExists $IP
-                        if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP) -and -not $alreadyBanned) {
+                        if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP) -and -not (_RuleExists $IP)) {
                             _TrackIP $IP
                         }
                     }
