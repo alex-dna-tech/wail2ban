@@ -365,7 +365,7 @@ function _UnbanOldRecords {
 
             if ($([int]([datetime]$ReleaseDate - (Get-Date)).TotalSeconds) -lt 0) {
                 _Debug "EXPIRED BAN" $IP "Ban expired at $(Get-Date $ReleaseDate -format G)"
-                _JailRelease $IP
+                _FirewallRemove $IP
             }
         }
     }
