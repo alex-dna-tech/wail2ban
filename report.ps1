@@ -46,6 +46,7 @@ function Get-Wail2BanHTMLReport {
     $totalEvents = $jsonLog.Count
     $uniqueIPs = $ipStats.Count
 
+    $dateRange = "$($startTime.ToString('yy-MM-dd')) - $((Get-Date).ToString('yy-MM-dd'))"
     $html = @"
 <!DOCTYPE html>
 <html>
@@ -59,7 +60,7 @@ function Get-Wail2BanHTMLReport {
     </style>
 </head>
 <body>
-    <h1>WAIL2Ban Report (Last $ReportDays Days)</h1>
+    <h1>WAIL2Ban Report $dateRange (Last $ReportDays Days)</h1>
     
     <h2>IP Statistics</h2>
     <table>
