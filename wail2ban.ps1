@@ -25,9 +25,6 @@
 .PARAMETER Uninstall
     Uninstalls the scheduled task for the script.
 
-.PARAMETER ReportDays
-    Specifies the number of days to include in the report (default is 7).
-
 .PARAMETER CheckWindow
     Specifies the time window in seconds to check for failed login attempts (default is 120).
 
@@ -266,7 +263,7 @@ function _GetBanDuration ($IP) {
 }
 
 # Ban the IP (with checking)
-function _JailLockup ($IP, $ExpireDate = $null) {
+function _JailLockup ($IP, $ExpireDate = $null, $event = $null) {
     $result = _Whitelisted($IP)
     if ($result) { _Warning "WHITELISTED" $IP "Attempted to ban whitelisted IP" }
     elseif ($SelfList -contains $IP) { _Warning "WHITELISTED" $IP "Attempted to ban self IP" }
@@ -282,12 +279,17 @@ function _JailLockup ($IP, $ExpireDate = $null) {
 
             _FirewallAdd $IP $ExpireDate
 
-            $jsonLog = @{
-                "IP" = $IP;
-                "BanCount" = $BannedIPs.Get_Item($IP);
-                "BanDurationSeconds" = $BanDuration;
-                "ExpireDate" = $ExpireDate.ToString("o")
-            } | ConvertTo-Json -Compress
+            $jsonLogData = @{
+                "IP"                 = $IP
+                "BanCount"           = $BannedIPs.Get_Item($IP)
+                "BanDurationSeconds" = $BanDuration
+                "ExpireDate"         = $ExpireDate.ToString("o")
+            }
+            if ($event) {
+                $jsonLogData['LogName'] = $event.LogName
+                $jsonLogData['EventID'] = $event.Id
+            }
+            $jsonLog = $jsonLogData | ConvertTo-Json -Compress
             _LogEventMessage $jsonLog BAN
 
         }
@@ -367,7 +369,7 @@ function _UnbanOldRecords {
 }
 
 # Tracks failed login attempts from a given IP
-function _TrackIP($IP) {
+function _TrackIP($IP, $event) {
     if ($TrackedIPs.ContainsKey($IP)) {
         $TrackedIPs[$IP].Count += 1
         $TrackedIPs[$IP].Timestamps.Add((Get-Date))
@@ -387,7 +389,7 @@ function _TrackIP($IP) {
     $TrackedIPs[$IP].Count = $TrackedIPs[$IP].Timestamps.Count
 
     if ($TrackedIPs[$IP].Count -ge $CheckCount) {
-        _JailLockup $IP
+        _JailLockup $IP $null $event
         $TrackedIPs.Remove($IP)
     }
 }
@@ -497,7 +499,7 @@ function Main {
                     foreach ($a in $_.matches) {
                         $IP = $a.Value
                         if ($SelfList -notcontains $IP -and -not (_Whitelisted $IP) -and -not (_RuleExists $IP)) {
-                            _TrackIP $IP
+                            _TrackIP $IP $e
                         }
                     }
                 }
