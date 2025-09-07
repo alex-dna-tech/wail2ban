@@ -5,11 +5,69 @@
     This script reads the wail2ban event logs and creates an HTML report summarizing banned IPs.
 .PARAMETER ReportDays
     Specifies the number of days to include in the report (default is 7).
+.PARAMETER Mail
+    If specified, the report will be sent via email.
+.PARAMETER SmtpServer
+    The address of the SMTP server. Required if -Mail is specified.
+.PARAMETER SmtpPort
+    The port to use on the SMTP server.
+.PARAMETER EmailFrom
+    The sender's email address. Required if -Mail is specified.
+.PARAMETER EmailTo
+    The recipient's email address(es). Required if -Mail is specified.
+.PARAMETER Cred
+    Path to the credential file for SMTP authentication. Required if -Mail is specified.
+.PARAMETER GenCred
+    If specified, prompts for SMTP credentials and saves them to the path specified by -Cred.
 #>
 [CmdletBinding()]
 param (
-    [int]$ReportDays = 7
+    [int]$ReportDays = 7,
+    [switch]$Mail,
+    [string]$SmtpServer,
+    [int]$SmtpPort = 587,
+    [string]$EmailFrom,
+    [string[]]$EmailTo,
+    [string]$Cred,
+    [switch]$GenCred
 )
+
+if ($Mail) {
+    $missingParams = [System.Collections.Generic.List[string]]@()
+    if (-not $SmtpServer) { $missingParams.Add('SmtpServer') }
+    if (-not $EmailFrom)  { $missingParams.Add('EmailFrom') }
+    if (-not $EmailTo)    { $missingParams.Add('EmailTo') }
+    if (-not $Cred)       { $missingParams.Add('Cred') }
+
+    if ($missingParams.Count -gt 0) {
+        foreach ($p in $missingParams) {
+            Write-Debug "Required parameter for -Mail is not set: -$p"
+        }
+        Write-Error "The following required parameters for -Mail are missing: $(($missingParams | ForEach-Object { "-$_" }) -join ', ')"
+        exit 1
+    }
+}
+
+if ($GenCred) {
+    if (-not $Cred) {
+        Write-Error "The -Cred parameter specifying the path for the credential file is required when using -GenCred."
+        exit 1
+    }
+
+    $EmailLogin = Read-Host "Enter SMTP Username"
+    
+    $SecurePassword =  Read-Host "Enter SMTP Password" -AsSecureString
+
+    $credential = New-Object System.Management.Automation.PSCredential ($EmailLogin, $SecurePassword)
+    try {
+        $credential | Export-Clixml -Path $Cred -Force
+        Write-Host "Credential file saved to $Cred"
+    } catch {
+        Write-Error "Failed to save credential file to '$Cred'. Error: $_"
+        exit 1
+    }
+    exit 0
+}
 
 function Get-Wail2BanHTMLReport {
     $startTime = (Get-Date).AddDays(-$ReportDays)
@@ -84,9 +142,50 @@ function Get-Wail2BanHTMLReport {
 </html>
 "@
 
-    $reportPath = Join-Path $PSScriptRoot "report.html"
-    $html | Out-File $reportPath -Force
-    Write-Host "Report generated at $reportPath"
+    return [pscustomobject]@{
+        Html      = $html
+        DateRange = $dateRange
+    }
 }
 
-Get-Wail2BanHTMLReport
+
+if ($Mail) {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    try {
+        $credential = Import-Clixml -Path $Cred
+    } catch {
+        Write-Error "Failed to import credential file from '$Cred'. Error: $_"
+        exit 1
+    }
+
+    $reportData = Get-Wail2BanHTMLReport
+    $mailParams = @{
+        From        = $EmailFrom
+        To          = $EmailTo
+        Subject     = "WAIL2Ban Report $($reportData.DateRange)"
+        Body        = $reportData.Html
+        BodyAsHtml  = $true
+        SmtpServer  = $SmtpServer
+        Port        = $SmtpPort
+        Credential  = $credential
+        UseSsl      = $true
+    }
+
+    try {
+        Send-MailMessage @mailParams -ErrorAction Stop
+        Write-Host "Email report sent successfully to $($EmailTo -join ', ')."
+    } catch {
+        Write-Error "Failed to send email report. Error: $($_.Exception.Message)"
+        if ($_.Exception.InnerException) {
+            Write-Error "Inner Exception: $($_.Exception.InnerException.Message)"
+        }
+    }
+
+    exit 0
+}
+
+$reportData = Get-Wail2BanHTMLReport
+$reportPath = Join-Path $PSScriptRoot "report.html"
+$reportData.Html | Out-File $reportPath -Force
+Write-Host "Report generated at $reportPath"
+
