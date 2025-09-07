@@ -24,7 +24,7 @@ The script checks for and requires:
 
 ## Usage
 
-Run `wail2ban.ps1` with optional parameters:
+### wail2ban.ps1
 
 - To list current banned IPs:
   ```powershell
@@ -46,11 +46,6 @@ Run `wail2ban.ps1` with optional parameters:
   .\wail2ban.ps1 -Silent
   ```
 
-- To generate an HTML report of banned IPs:
-  ```powershell
-  .\wail2ban.ps1 -html
-  ```
-
 - To install the scheduled task to run at startup:
   ```powershell
   .\wail2ban.ps1 -install
@@ -61,22 +56,31 @@ Run `wail2ban.ps1` with optional parameters:
   .\wail2ban.ps1 -uninstall
   ```
 
+### report.ps1
+
+- To generate an HTML report of recent activity:
+  ```powershell
+  .\report.ps1
+  ```
+
 ### Parameters Overview
 
+#### `wail2ban.ps1` Parameters
 - `-ListBans`: Lists all the currently banned IP addresses.
 - `-UnbanIP <IP>`: Removes the specified IP address from the ban list.
 - `-ClearAllBans`: Removes all the IP addresses that have been banned by this script.
 - `-Silent`: Runs the script without outputting messages to the console.
-- `-html`: Generates an HTML report of the banned IPs.
 - `-install`: Installs the scheduled task for the script to run at startup.
 - `-uninstall`: Uninstalls the scheduled task for the script.
-- `-ReportDays <int>`: Specifies the number of days to include in the report (default is 7).
 - `-CheckWindow <int>`: Specifies the time window in seconds to check for failed login attempts (default is 120).
 - `-CheckCount <int>`: Specifies the number of failed login attempts before banning an IP (default is 5).
 - `-LoopDuration <int>`: Specifies the duration in seconds between checks for new events (default is 5).
 - `-MaxBanDuration <int>`: Specifies the maximum duration in seconds for which an IP can be banned (default is 7776000).
 - `-EventsToTrack <string>`: Specifies the event logs and event IDs to monitor for failed login attempts. Format must be space-separated pairs of Log Name (Application, Security, System) and EventID (integer) (e.g., "Security 4625 Application 1000"). Default is "Security 4625".
 - `-WhiteList <string>`: Specifies IP addresses that should never be banned. Format must be space-separated IPv4 addresses or CIDR notations (e.g., "192.168.0.1 192.168.1.0/24").
+
+#### `report.ps1` Parameters
+- `-ReportDays <int>`: Specifies the number of days to include in the report (default is 7).
 
 ## Functional Overview
 
