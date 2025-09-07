@@ -19,13 +19,10 @@
 .PARAMETER Silent
     Runs the script without outputting messages to the console.
 
-.PARAMETER html
-    Generates an HTML report of the banned IPs.
-
-.PARAMETER install
+.PARAMETER Install
     Installs the scheduled task for the script.
 
-.PARAMETER uninstall
+.PARAMETER Uninstall
     Uninstalls the scheduled task for the script.
 
 .PARAMETER ReportDays
@@ -55,10 +52,8 @@ param (
     [string]$UnbanIP,
     [switch]$ClearAllBans,
     [switch]$Silent,
-    [switch]$html,
-    [switch]$install,
-    [switch]$uninstall,
-    [int]$ReportDays = 7,
+    [switch]$Install,
+    [switch]$Uninstall,
     [int]$CheckWindow = 120,
     [int]$CheckCount = 5,
     [int]$LoopDuration = 5,
@@ -167,8 +162,8 @@ function _WriteLog ($type, $action, $ip, $reason) {
     $output = "[$timestamp] ${action}: $ip - $reason"
     switch ($type) {
         "D" { Write-Debug $output }
-        "W" { Write-Warning "WARNING: $output" }
-        "E" { Write-Error "ERROR: $output" }
+        "W" { Write-Warning $output }
+        "E" { Write-Error $output }
     }
 }
 	 
@@ -422,18 +417,13 @@ function _UninstallScheduledTask {
 
 # Handle script argupments
 function _HandleCli {
-    if ($install) {
+    if ($Install) {
         _InstallScheduledTask
         exit
     }
 
-    if ($uninstall) {
+    if ($Uninstall) {
         _UninstallScheduledTask
-        exit
-    }
-
-    if ($html) {
-        _GetHTMLReport
         exit
     }
 
@@ -472,83 +462,6 @@ function _HandleCli {
         else { "No current firewall listings to remove." }
         exit
     }
-}
-
-# Generate HTML report
-function _GetHTMLReport {
-    $startTime = (Get-Date).AddDays(-$ReportDays)
-    $events = Get-WinEvent -FilterHashtable @{
-        LogName      = 'Application'
-        ProviderName = 'wail2ban'
-        ID           = 1000
-        StartTime    = $startTime
-    } -ErrorAction SilentlyContinue
-
-    $jsonLog = @()
-    foreach ($e in $events) {
-        try {
-            $logObject = $e.Message | ConvertFrom-Json
-            $logObject | Add-Member -NotePropertyName TimeCreated -NotePropertyValue $e.TimeCreated
-            $jsonLog += $logObject
-        } catch {
-            Write-Warning "Failed to parse message for event $($e.Id)"
-        }
-    }
-
-    $ipStats = $jsonLog | Group-Object -Property ip | 
-               Select-Object @{Name='IP'; Expression={$_.Name}}, 
-                             @{Name='Count'; Expression={($_.Group | Measure-Object BanCount -Maximum).Maximum}},
-                             @{Name='TotalBanDuration'; Expression={
-                                 $totalSeconds = ($_.Group | Measure-Object BanDurationSeconds -Sum).Sum
-                                 $days = [math]::Floor($totalSeconds / 86400)
-                                 $hours = [math]::Floor(($totalSeconds % 86400) / 3600)
-                                 $minutes = [math]::Floor(($totalSeconds % 3600) / 60)
-                                 "$days d $hours h $minutes m"
-                             }} |
-               Sort-Object Count -Descending
-
-    $totalEvents = $jsonLog.Count
-    $uniqueIPs = $ipStats.Count
-
-    $html = @"
-<!DOCTYPE html>
-<html>
-<head>
-    <title>WAIL2Ban Report</title>
-    <style>
-        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-    </style>
-</head>
-<body>
-    <h1>WAIL2Ban Report (Last $ReportDays Days)</h1>
-    
-    <h2>IP Statistics</h2>
-    <table>
-        <tr><th>IP Address</th><th>Count</th><th>Total Ban Duration</th><th>Details</th></tr>
-        $(if ($ipStats) {
-            ($ipStats | ForEach-Object {
-                "<tr><td>$($_.IP)</td><td>$($_.Count)</td><td>$($_.TotalBanDuration)</td>" +
-                "<td><a href='https://www.abuseipdb.com/check/$($_.IP)' target='_blank'>View Details</a></td></tr>"
-            }) -join "`n"
-        } else {
-            "<tr><td colspan='4'>No events found</td></tr>"
-        })
-    </table>
-    
-    <h2>Total Statistics</h2>
-    <table>
-        <tr><th>Total Events</th><td>$totalEvents</td></tr>
-        <tr><th>Unique IPs</th><td>$uniqueIPs</td></tr>
-    </table>
-</body>
-</html>
-"@
-
-    $reportPath = Join-Path $PSScriptRoot "report.html"
-    $html | Out-File $reportPath -Force
 }
 
 function Main {
