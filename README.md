@@ -22,6 +22,22 @@ The script checks for and requires:
 - PowerShell version 5.1 or higher
 - PowerShell execution policy set to 'RemoteSigned' or less restrictive
 
+## Security Considerations
+
+### Avoid Storing Plain-Text Passwords
+
+When using the email feature in `report.ps1`, it is strongly recommended to use an encrypted credential file instead of passing passwords in plain text on the command line. You can create this file using the `-GenCred` parameter.
+
+To manually create a credential file for use with the `-Cred` parameter:
+
+```powershell
+$SecurePassword = Read-Host "Enter Password" -AsSecureString
+$Credential = New-Object System.Management.Automation.PSCredential ("user@domain.com", $SecurePassword)
+$Credential | Export-Clixml -Path "C:\secure\creds.xml"
+```
+
+You can then use `C:\secure\creds.xml` with the `-Cred` parameter in `report.ps1`.
+
 ## Usage
 
 ### wail2ban.ps1
@@ -63,6 +79,16 @@ The script checks for and requires:
   .\report.ps1
   ```
 
+- To create an encrypted credential file for sending emails:
+  ```powershell
+  .\report.ps1 -GenCred -Cred "C:\secure\wail2ban_creds.xml"
+  ```
+
+- To generate and email a report using a credential file:
+  ```powershell
+  .\report.ps1 -Mail -SmtpServer "smtp.example.com" -EmailFrom "sender@example.com" -EmailTo "recipient@example.com" -Cred "C:\secure\wail2ban_creds.xml"
+  ```
+
 ### Parameters Overview
 
 #### `wail2ban.ps1` Parameters
@@ -81,6 +107,15 @@ The script checks for and requires:
 
 #### `report.ps1` Parameters
 - `-ReportDays <int>`: Specifies the number of days to include in the report (default is 7).
+- `-Mail`: When specified, sends the generated HTML report via email.
+- `-SmtpServer <string>`: The address of the SMTP server (required for `-Mail`).
+- `-SmtpPort <int>`: The port for the SMTP server (default is 587).
+- `-EmailFrom <string>`: The sender's email address (required for `-Mail`).
+- `-EmailTo <string[]>`: One or more recipient email addresses (required for `-Mail`).
+- `-Cred <string>`: Path to an encrypted credential file (XML) for SMTP authentication. Recommended for use with `-Mail`.
+- `-EmailLogin <string>`: The username for SMTP authentication. Using this with `-EmailPass` is less secure than using `-Cred`.
+- `-EmailPass <string>`: The password for SMTP authentication. Using this is insecure.
+- `-GenCred`: A switch to generate an encrypted credential file. When used, the script will prompt for a username and password, save them to the path specified by `-Cred`, and then exit.
 
 ## Functional Overview
 

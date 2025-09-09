@@ -19,6 +19,8 @@
     Path to the credential file for SMTP authentication. Required if -Mail is specified.
 .PARAMETER GenCred
     If specified, prompts for SMTP credentials and saves them to the path specified by -Cred.
+.PARAMETER Install
+    Installs the scheduled task for the script.
 #>
 [CmdletBinding()]
 param (
@@ -26,17 +28,99 @@ param (
     [switch]$Mail,
     [string]$SmtpServer,
     [int]$SmtpPort = 587,
-    [string]$EmailFrom,
-    [string[]]$EmailTo,
+    [string]$From,
+    [string[]]$To,
     [string]$Cred,
-    [switch]$GenCred
+    [switch]$GenCred,
+    [switch]$Install
 )
+
+function _GenerateCredentialFile {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
+
+    $EmailLogin = Read-Host "Enter SMTP Username"
+    $SecurePassword =  Read-Host "Enter SMTP Password" -AsSecureString
+    $credential = New-Object System.Management.Automation.PSCredential ($EmailLogin, $SecurePassword)
+    try {
+        $credential | Export-Clixml -Path $Path -Force
+        Write-Host "Credential file saved to $Path"
+        return $true
+    } catch {
+        Write-Error "Failed to save credential file to '$Path'. Error: $_"
+        return $false
+    }
+}
+
+function _InstallScheduledTask {
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Error "Installing the scheduled task requires administrative privileges. Please run it as an administrator."
+        exit 1
+    }
+
+    $taskName = "wail2ban-report"
+
+    # Prompt for required parameters
+    Write-Host "Configuring scheduled task for wail2ban report."
+    $CredPath = Read-Host "Enter path to credential file (e.g., .\email.xml)"
+
+    if (-not (Test-Path $CredPath)) {
+        $choice = Read-Host "Credential file '$CredPath' does not exist. Do you want to create it now? (y/n)"
+        if ($choice -eq 'y') {
+            if (-not (_GenerateCredentialFile -Path $CredPath)) {
+                Write-Error "Could not create credential file. Aborting installation."
+                exit 1
+            }
+        } else {
+            Write-Error "Credential file not found. Aborting installation."
+            exit 1
+        }
+    }
+
+    $SmtpSrv = Read-Host "Enter SMTP server address (e.g., mail.service.com)"
+    $FromAddr = Read-Host "Enter sender's email address (e.g., admin@service.com)"
+    $ToAddr = Read-Host "Enter recipient's email address(es), comma-separated (e.g., test@example.com)"
+
+    # Unregister existing task if any
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    
+    $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -Cred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -From `"$FromAddr`" -To `"$ToAddr`""
+    $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument $arguments -WorkingDirectory $PSScriptRoot
+    $trigger = New-ScheduledTaskTrigger -Daily -At "8am"
+    $principal = New-ScheduledTaskPrincipal -UserID "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -Hidden
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
+    
+    Write-Host "Scheduled task '$taskName' installed successfully. It will run daily at 8:00 AM."
+}
+
+# Handle script argupments
+function _HandleCli {
+    if ($Install) {
+        _InstallScheduledTask
+        exit
+    }
+
+    if ($GenCred) {
+        if (-not $Cred) {
+            Write-Error "The -Cred parameter specifying the path for the credential file is required when using -GenCred."
+            exit 1
+        }
+        _GenerateCredentialFile -Path $Cred
+        exit 0
+    }
+}
+
+_HandleCli
 
 if ($Mail) {
     $missingParams = [System.Collections.Generic.List[string]]@()
     if (-not $SmtpServer) { $missingParams.Add('SmtpServer') }
-    if (-not $EmailFrom)  { $missingParams.Add('EmailFrom') }
-    if (-not $EmailTo)    { $missingParams.Add('EmailTo') }
+    if (-not $From)  { $missingParams.Add('From') }
+    if (-not $To)    { $missingParams.Add('To') }
     if (-not $Cred)       { $missingParams.Add('Cred') }
 
     if ($missingParams.Count -gt 0) {
@@ -46,27 +130,6 @@ if ($Mail) {
         Write-Error "The following required parameters for -Mail are missing: $(($missingParams | ForEach-Object { "-$_" }) -join ', ')"
         exit 1
     }
-}
-
-if ($GenCred) {
-    if (-not $Cred) {
-        Write-Error "The -Cred parameter specifying the path for the credential file is required when using -GenCred."
-        exit 1
-    }
-
-    $EmailLogin = Read-Host "Enter SMTP Username"
-    
-    $SecurePassword =  Read-Host "Enter SMTP Password" -AsSecureString
-
-    $credential = New-Object System.Management.Automation.PSCredential ($EmailLogin, $SecurePassword)
-    try {
-        $credential | Export-Clixml -Path $Cred -Force
-        Write-Host "Credential file saved to $Cred"
-    } catch {
-        Write-Error "Failed to save credential file to '$Cred'. Error: $_"
-        exit 1
-    }
-    exit 0
 }
 
 function Get-Wail2BanHTMLReport {
@@ -159,28 +222,23 @@ if ($Mail) {
     }
 
     $reportData = Get-Wail2BanHTMLReport
-    $mailParams = @{
-        From        = $EmailFrom
-        To          = $EmailTo
-        Subject     = "WAIL2Ban Report $($reportData.DateRange)"
-        Body        = $reportData.Html
-        BodyAsHtml  = $true
-        SmtpServer  = $SmtpServer
-        Port        = $SmtpPort
-        Credential  = $credential
-        UseSsl      = $true
-    }
+	
+	# Create SMTP client
+	$smtp = New-Object System.Net.Mail.SmtpClient($SMTPServer, $SMTPPort)
+	$smtp.EnableSsl = $true
+	$NetCred = $credential.GetNetworkCredential()
+	$smtp.Credentials = New-Object System.Net.NetworkCredential($NetCred.UserName, $NetCred.Password);
 
-    try {
-        Send-MailMessage @mailParams -ErrorAction Stop
-        Write-Host "Email report sent successfully to $($EmailTo -join ', ')."
-    } catch {
-        Write-Error "Failed to send email report. Error: $($_.Exception.Message)"
-        if ($_.Exception.InnerException) {
-            Write-Error "Inner Exception: $($_.Exception.InnerException.Message)"
-        }
-    }
+	# Create MailMessage
+	$msg = New-Object System.Net.Mail.MailMessage
+	$msg.From = $From
+	$msg.To.Add($To)
+	$msg.Subject = "WAIL2Ban Report $($reportData.DateRange)"
+	$msg.Body = $reportData.Html
+	$msg.IsBodyHtml = $true
 
+	# Send
+	$smtp.Send($msg)
     exit 0
 }
 
@@ -188,4 +246,5 @@ $reportData = Get-Wail2BanHTMLReport
 $reportPath = Join-Path $PSScriptRoot "report.html"
 $reportData.Html | Out-File $reportPath -Force
 Write-Host "Report generated at $reportPath"
+
 

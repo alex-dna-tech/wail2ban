@@ -1,6 +1,7 @@
-bannedIPs.json
-report.html
 .env
+bannedIPs.json
+cred.xml
+report.html
 
 # Editor directories and files
 .idea
