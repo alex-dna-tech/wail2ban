@@ -81,7 +81,7 @@ You can then use `C:\secure\creds.xml` with the `-Cred` parameter in `report.ps1
 
 - To create an encrypted credential file for sending emails:
   ```powershell
-  .\report.ps1 -GenCred -Cred "C:\secure\wail2ban_creds.xml"
+  .\report.ps1 -GenCred "C:\secure\wail2ban_creds.xml"
   ```
 
 - To generate and email a report using a credential file:
@@ -115,7 +115,7 @@ You can then use `C:\secure\creds.xml` with the `-Cred` parameter in `report.ps1
 - `-Cred <string>`: Path to an encrypted credential file (XML) for SMTP authentication. Recommended for use with `-Mail`.
 - `-EmailLogin <string>`: The username for SMTP authentication. Using this with `-EmailPass` is less secure than using `-Cred`.
 - `-EmailPass <string>`: The password for SMTP authentication. Using this is insecure.
-- `-GenCred`: A switch to generate an encrypted credential file. When used, the script will prompt for a username and password, save them to the path specified by `-Cred`, and then exit.
+- `-GenCred <string>`: Generates an encrypted credential file. When used, the script will prompt for a username and password, save them to the specified path, and then exit.
 
 ## Functional Overview
 

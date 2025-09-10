@@ -18,7 +18,7 @@
 .PARAMETER Cred
     Path to the credential file for SMTP authentication. Required if -Mail is specified.
 .PARAMETER GenCred
-    If specified, prompts for SMTP credentials and saves them to the path specified by -Cred.
+    If specified, prompts for SMTP credentials and saves them to the given path, then exits.
 .PARAMETER Install
     Installs the scheduled task for the script.
 #>
@@ -31,7 +31,7 @@ param (
     [string]$From,
     [string[]]$To,
     [string]$Cred,
-    [switch]$GenCred,
+    [string]$GenCred,
     [switch]$Install
 )
 
@@ -104,12 +104,12 @@ function _HandleCli {
         exit
     }
 
-    if ($GenCred) {
-        if (-not $Cred) {
-            Write-Error "The -Cred parameter specifying the path for the credential file is required when using -GenCred."
+    if ($PSBoundParameters.ContainsKey('GenCred')) {
+        if (-not $GenCred) {
+            Write-Error "The -GenCred parameter requires a path argument for the credential file."
             exit 1
         }
-        _GenerateCredentialFile -Path $Cred
+        _GenerateCredentialFile -Path $GenCred
         exit 0
     }
 }
