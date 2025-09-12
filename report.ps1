@@ -66,6 +66,11 @@ function _InstallScheduledTask {
     Write-Host "Configuring scheduled task for wail2ban report."
     $CredPath = Read-Host "Enter path to credential file (e.g., .\email.xml)"
 
+    if ([string]::IsNullOrWhiteSpace($CredPath)) {
+        Write-Error "Credential file path cannot be empty. Aborting installation."
+        exit 1
+    }
+
     if (-not (Test-Path $CredPath)) {
         $choice = Read-Host "Credential file '$CredPath' does not exist. Do you want to create it now? (y/n)"
         if ($choice -eq 'y') {
@@ -88,13 +93,13 @@ function _InstallScheduledTask {
     
     $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -Cred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -From `"$FromAddr`" -To `"$ToAddr`""
     $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument $arguments -WorkingDirectory $PSScriptRoot
-    $trigger = New-ScheduledTaskTrigger -Daily -At "8am"
+    $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "8am"
     $principal = New-ScheduledTaskPrincipal -UserID "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -Hidden
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
     Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
     
-    Write-Host "Scheduled task '$taskName' installed successfully. It will run daily at 8:00 AM."
+    Write-Host "Scheduled task '$taskName' installed successfully. It will run weekly on Monday at 8:00 AM."
 }
 
 # Handle script argupments
