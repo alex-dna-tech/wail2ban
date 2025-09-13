@@ -96,7 +96,7 @@ function _InstallMailReportTask {
 
     # Prompt for required parameters
     Write-Host "Configuring scheduled task for wail2ban report."
-    $CredPath = Read-Host "Enter path to credential file (e.g., .\email.xml)"
+    $CredPath = Read-Host "Enter path to credential file (e.g., .\email.xml or emty)"
 
     if ([string]::IsNullOrWhiteSpace($CredPath)) {
         $CredPath = ".\email.xml"
@@ -146,7 +146,7 @@ function _InstallAbuseIPDBTask {
 
     # Prompt for required parameters
     Write-Host "Configuring scheduled task for wail2ban AbuseIPDB reporting."
-    $KeyPath = Read-Host "Enter path to AbuseIPDB API key file (e.g., .\abuseipdb.xml)"
+    $KeyPath = Read-Host "Enter path to AbuseIPDB API key file (e.g., .\abuseipdb.xml or empty)"
 
     if ([string]::IsNullOrWhiteSpace($KeyPath)) {
         $KeyPath = ".\abuseipdb.xml"
@@ -166,7 +166,7 @@ function _InstallAbuseIPDBTask {
         }
     }
 
-    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 18,22 for SSH and Brute-Force)"
+    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 18,22 for SSH and Brute-Force) https://www.abuseipdb.com/categories"
 
     # Unregister existing task if any
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
@@ -245,23 +245,19 @@ if ($AbuseIPDBReport) {
     }
 
     # Get events from last 24 hours
-    $startTime = (Get-Date).AddDays(-1)
     $events = Get-WinEvent -FilterHashtable @{
         LogName      = 'Application'
         ProviderName = 'wail2ban'
         ID           = 1000
-        StartTime    = $startTime
+        StartTime = (Get-Date).Date
+        EndTime   = (Get-Date).Date.AddDays(1) 
     } -ErrorAction SilentlyContinue
 
     # Process and report each event
     foreach ($event in $events) {
         try {
             $logObject = $event.Message | ConvertFrom-Json
-            
-            $comment = "Banned from $($logObject.service). Log entry: $($logObject.log_line)"
-            if ($comment.Length -gt 1024) {
-                $comment = $comment.Substring(0, 1021) + "..."
-            }
+            $comment = "Banned by GitHub alex-dna-tech/wail2ban. Log entry: {0}" -f $event.Message 
 
             $reportParams = @{
                 Uri = "https://api.abuseipdb.com/api/v2/report"
