@@ -218,11 +218,14 @@ function Get-Wail2BanHTMLReport {
 
 
 if ($Mail) {
+    $errorLogPath = Join-Path $PSScriptRoot "report-error.log"
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     try {
         $credential = Import-Clixml -Path $Cred
     } catch {
-        Write-Error "Failed to import credential file from '$Cred'. Error: $_"
+        $errorMessage = "Failed to import credential file from '$Cred'. Error: $_"
+        Write-Error $errorMessage
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
         exit 1
     }
 
@@ -243,7 +246,14 @@ if ($Mail) {
 	$msg.IsBodyHtml = $true
 
 	# Send
-	$smtp.Send($msg)
+	try {
+	    $smtp.Send($msg)
+	} catch {
+        $errorMessage = "Failed to send email report. Error: $_"
+        Write-Error $errorMessage
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
+        exit 1
+	}
     exit 0
 }
 
