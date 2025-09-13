@@ -1,6 +1,7 @@
 .env
 bannedIPs.json
-cred.xml
+email.xml
+abuseipdb.xml
 report.html
 
 # Editor directories and files

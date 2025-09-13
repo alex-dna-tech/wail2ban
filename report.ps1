@@ -86,7 +86,7 @@ function _GenerateAbuseIPDBKeyFile {
     }
 }
 
-function _InstallScheduledTask {
+function _InstallMailReportTask {
     if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         Write-Error "Installing the scheduled task requires administrative privileges. Please run it as an administrator."
         exit 1
@@ -99,8 +99,8 @@ function _InstallScheduledTask {
     $CredPath = Read-Host "Enter path to credential file (e.g., .\email.xml)"
 
     if ([string]::IsNullOrWhiteSpace($CredPath)) {
-        Write-Error "Credential file path cannot be empty. Aborting installation."
-        exit 1
+        $CredPath = ".\email.xml"
+        Write-Host "No path provided, using default: $CredPath"
     }
 
     if (-not (Test-Path $CredPath)) {
@@ -117,7 +117,9 @@ function _InstallScheduledTask {
     }
 
     $SmtpSrv = Read-Host "Enter SMTP server address (e.g., mail.service.com)"
-    $FromAddr = Read-Host "Enter sender's email address (e.g., admin@service.com)"
+    $credential = Import-Clixml -Path $CredPath
+    $FromAddr = $credential.UserName
+    Write-Host "Using '$FromAddr' as sender's email address from credential file."
     $ToAddr = Read-Host "Enter recipient's email address(es), comma-separated (e.g., test@example.com)"
 
     # Unregister existing task if any
@@ -147,8 +149,8 @@ function _InstallAbuseIPDBTask {
     $KeyPath = Read-Host "Enter path to AbuseIPDB API key file (e.g., .\abuseipdb.xml)"
 
     if ([string]::IsNullOrWhiteSpace($KeyPath)) {
-        Write-Error "API key file path cannot be empty. Aborting installation."
-        exit 1
+        $KeyPath = ".\abuseipdb.xml"
+        Write-Host "No path provided, using default: $KeyPath"
     }
 
     if (-not (Test-Path $KeyPath)) {
@@ -183,7 +185,7 @@ function _InstallAbuseIPDBTask {
 # Handle script argupments
 function _HandleCli {
     if ($InstallMailReportTask) {
-        _InstallScheduledTask
+        _InstallMailReportTask
         exit
     }
 
