@@ -24,19 +24,17 @@ The script checks for and requires:
 
 ## Security Considerations
 
-### Avoid Storing Plain-Text Passwords
+#### Avoid Storing Plain-Text Passwords and API Keys
 
-When using the email feature in `report.ps1`, it is strongly recommended to use an encrypted credential file instead of passing passwords in plain text on the command line. You can create this file using the `-GenCred` parameter.
+When using features in `report.ps1`, it is strongly recommended to use encrypted files for credentials and API keys instead of passing them in plain text.
 
-To manually create a credential file for use with the `-Cred` parameter:
+**For Email Reporting:**
+You can create an encrypted credential file using the `-GenMailCred` parameter.
+You can then use `C:\secure\mail_creds.xml` with the `-MailCred` parameter.
 
-```powershell
-$SecurePassword = Read-Host "Enter Password" -AsSecureString
-$Credential = New-Object System.Management.Automation.PSCredential ("user@domain.com", $SecurePassword)
-$Credential | Export-Clixml -Path "C:\secure\creds.xml"
-```
-
-You can then use `C:\secure\creds.xml` with the `-Cred` parameter in `report.ps1`.
+**For AbuseIPDB Reporting:**
+You can create an encrypted API key file using the `-GenAbuseIPDBKey` parameter.
+You can then use `C:\secure\abuseipdb.xml` with the `-AbuseIPDBKeyPath` parameter.
 
 ## Usage
 
@@ -81,12 +79,22 @@ You can then use `C:\secure\creds.xml` with the `-Cred` parameter in `report.ps1
 
 - To create an encrypted credential file for sending emails:
   ```powershell
-  .\report.ps1 -GenCred "C:\secure\wail2ban_creds.xml"
+  .\report.ps1 -GenMailCred "C:\secure\wail2ban_creds.xml"
   ```
 
 - To generate and email a report using a credential file:
   ```powershell
-  .\report.ps1 -Mail -SmtpServer "smtp.example.com" -EmailFrom "sender@example.com" -EmailTo "recipient@example.com" -Cred "C:\secure\wail2ban_creds.xml"
+  .\report.ps1 -Mail -SmtpServer "smtp.example.com" -From "sender@example.com" -To "recipient@example.com" -MailCred "C:\secure\wail2ban_creds.xml"
+  ```
+
+- To create an encrypted AbuseIPDB API key file:
+  ```powershell
+  .\report.ps1 -GenAbuseIPDBKey "C:\secure\abuseipdb.xml"
+  ```
+
+- To report recently banned IPs to AbuseIPDB:
+  ```powershell
+  .\report.ps1 -AbuseIPDBReport -AbuseIPDBKeyPath "C:\secure\abuseipdb.xml" -AbuseIPDBCategories "18,22"
   ```
 
 ### Parameters Overview
@@ -106,16 +114,20 @@ You can then use `C:\secure\creds.xml` with the `-Cred` parameter in `report.ps1
 - `-WhiteList <string>`: Specifies IP addresses that should never be banned. Format must be space-separated IPv4 addresses or CIDR notations (e.g., "192.168.0.1 192.168.1.0/24").
 
 #### `report.ps1` Parameters
-- `-ReportDays <int>`: Specifies the number of days to include in the report (default is 7).
-- `-Mail`: When specified, sends the generated HTML report via email.
-- `-SmtpServer <string>`: The address of the SMTP server (required for `-Mail`).
-- `-SmtpPort <int>`: The port for the SMTP server (default is 587).
-- `-EmailFrom <string>`: The sender's email address (required for `-Mail`).
-- `-EmailTo <string[]>`: One or more recipient email addresses (required for `-Mail`).
-- `-Cred <string>`: Path to an encrypted credential file (XML) for SMTP authentication. Recommended for use with `-Mail`.
-- `-EmailLogin <string>`: The username for SMTP authentication. Using this with `-EmailPass` is less secure than using `-Cred`.
-- `-EmailPass <string>`: The password for SMTP authentication. Using this is insecure.
-- `-GenCred <string>`: Generates an encrypted credential file. When used, the script will prompt for a username and password, save them to the specified path, and then exit.
+- `-ReportDays <int>`: Specifies the number of days to include in the HTML report (default is 7).
+- `-Mail`: If specified, the HTML report will be sent via email.
+- `-SmtpServer <string>`: The address of the SMTP server. Required if `-Mail` is specified.
+- `-SmtpPort <int>`: The port to use on the SMTP server (default is 587).
+- `-From <string>`: The sender's email address. Required if `-Mail` is specified.
+- `-To <string[]>`: The recipient's email address(es). Required if `-Mail` is specified.
+- `-MailCred <string>`: Path to the credential file for SMTP authentication. Required if `-Mail` is specified.
+- `-GenMailCred <string>`: If specified, prompts for SMTP credentials and saves them to the given path, then exits.
+- `-InstallMailReportTask`: Installs the scheduled task for the HTML report.
+- `-AbuseIPDBReport`: If specified, reports banned IPs from the last 24 hours to AbuseIPDB.
+- `-AbuseIPDBKeyPath <string>`: Path to the AbuseIPDB API key file. Required if `-AbuseIPDBReport` is specified.
+- `-GenAbuseIPDBKey <string>`: If specified, prompts for an AbuseIPDB API key and saves it to the given path, then exits.
+- `-AbuseIPDBCategories <string[]>`: Comma-separated list of AbuseIPDB categories to use for reporting. Required if `-AbuseIPDBReport` is specified.
+- `-InstallAbuseIPDBTask`: Installs the scheduled task for daily AbuseIPDB reporting.
 
 ## Functional Overview
 
