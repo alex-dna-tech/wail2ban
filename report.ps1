@@ -94,7 +94,7 @@ function _InstallScheduledTask {
     $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -Cred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -From `"$FromAddr`" -To `"$ToAddr`""
     $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument $arguments -WorkingDirectory $PSScriptRoot
     $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "8am"
-    $principal = New-ScheduledTaskPrincipal -UserID "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserID ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType S4U -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -Hidden
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
     Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
