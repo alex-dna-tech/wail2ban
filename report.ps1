@@ -1,26 +1,36 @@
 <#
 .SYNOPSIS
-    Generates an HTML report of wail2ban activity.
+    Generates an HTML report of wail2ban activity and can report IPs to AbuseIPDB service or Email.
 .DESCRIPTION
-    This script reads the wail2ban event logs and creates an HTML report summarizing banned IPs.
+    This script reads the wail2ban event logs, creates an HTML report summarizing banned IPs, and can report those IPs to AbuseIPDB.
 .PARAMETER ReportDays
-    Specifies the number of days to include in the report (default is 7).
+    Specifies the number of days to include in the HTML report (default is 7).
 .PARAMETER Mail
-    If specified, the report will be sent via email.
+    If specified, the HTML report will be sent via email.
 .PARAMETER SmtpServer
     The address of the SMTP server. Required if -Mail is specified.
 .PARAMETER SmtpPort
     The port to use on the SMTP server.
-.PARAMETER EmailFrom
+.PARAMETER From
     The sender's email address. Required if -Mail is specified.
-.PARAMETER EmailTo
+.PARAMETER To
     The recipient's email address(es). Required if -Mail is specified.
-.PARAMETER Cred
+.PARAMETER MailCred
     Path to the credential file for SMTP authentication. Required if -Mail is specified.
-.PARAMETER GenCred
+.PARAMETER GenMailCred
     If specified, prompts for SMTP credentials and saves them to the given path, then exits.
-.PARAMETER Install
-    Installs the scheduled task for the script.
+.PARAMETER InstallMailReportTask
+    Installs the scheduled task for the HTML report.
+.PARAMETER AbuseIPDBReport
+    If specified, reports banned IPs from the last 24 hours to AbuseIPDB.
+.PARAMETER AbuseIPDBKeyPath
+    Path to the AbuseIPDB API key file. Required if -AbuseIPDBReport is specified.
+.PARAMETER GenAbuseIPDBKey
+    If specified, prompts for an AbuseIPDB API key and saves it to the given path, then exits.
+.PARAMETER AbuseIPDBCategories
+    Comma-separated list of AbuseIPDB categories to use for reporting. Required if -AbuseIPDBReport is specified.
+.PARAMETER InstallAbuseIPDBTask
+    Installs the scheduled task for daily AbuseIPDB reporting.
 #>
 [CmdletBinding()]
 param (
@@ -30,9 +40,14 @@ param (
     [int]$SmtpPort = 587,
     [string]$From,
     [string[]]$To,
-    [string]$Cred,
-    [string]$GenCred,
-    [switch]$Install
+    [string]$MailCred,
+    [string]$GenMailCred,
+    [switch]$InstallMailReportTask,
+    [switch]$AbuseIPDBReport,
+    [string]$AbuseIPDBKeyPath,
+    [string]$GenAbuseIPDBKey,
+    [string[]]$AbuseIPDBCategories,
+    [switch]$InstallAbuseIPDBTask
 )
 
 function _GenerateCredentialFile {
@@ -50,6 +65,23 @@ function _GenerateCredentialFile {
         return $true
     } catch {
         Write-Error "Failed to save credential file to '$Path'. Error: $_"
+        return $false
+    }
+}
+
+function _GenerateAbuseIPDBKeyFile {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
+
+    $ApiKey = Read-Host "Enter AbuseIPDB API Key" -AsSecureString
+    try {
+        $ApiKey | Export-Clixml -Path $Path -Force
+        Write-Host "AbuseIPDB API Key file saved to $Path"
+        return $true
+    } catch {
+        Write-Error "Failed to save API Key file to '$Path'. Error: $_"
         return $false
     }
 }
@@ -91,7 +123,7 @@ function _InstallScheduledTask {
     # Unregister existing task if any
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
     
-    $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -Cred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -From `"$FromAddr`" -To `"$ToAddr`""
+    $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -MailCred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -From `"$FromAddr`" -To `"$ToAddr`""
     $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument $arguments -WorkingDirectory $PSScriptRoot
     $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "8am"
     $principal = New-ScheduledTaskPrincipal -UserID ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType S4U -RunLevel Highest
@@ -102,31 +134,164 @@ function _InstallScheduledTask {
     Write-Host "Scheduled task '$taskName' installed successfully. It will run weekly on Monday at 8:00 AM."
 }
 
+function _InstallAbuseIPDBTask {
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Error "Installing the scheduled task requires administrative privileges. Please run it as an administrator."
+        exit 1
+    }
+
+    $taskName = "wail2ban-abuseipdb-report"
+
+    # Prompt for required parameters
+    Write-Host "Configuring scheduled task for wail2ban AbuseIPDB reporting."
+    $KeyPath = Read-Host "Enter path to AbuseIPDB API key file (e.g., .\abuseipdb.xml)"
+
+    if ([string]::IsNullOrWhiteSpace($KeyPath)) {
+        Write-Error "API key file path cannot be empty. Aborting installation."
+        exit 1
+    }
+
+    if (-not (Test-Path $KeyPath)) {
+        $choice = Read-Host "API key file '$KeyPath' does not exist. Do you want to create it now? (y/n)"
+        if ($choice -eq 'y') {
+            if (-not (_GenerateAbuseIPDBKeyFile -Path $KeyPath)) {
+                Write-Error "Could not create API key file. Aborting installation."
+                exit 1
+            }
+        } else {
+            Write-Error "API key file not found. Aborting installation."
+            exit 1
+        }
+    }
+
+    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 18,22 for SSH and Brute-Force)"
+
+    # Unregister existing task if any
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    
+    $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -AbuseIPDBReport -AbuseIPDBKeyPath `"$KeyPath`" -AbuseIPDBCategories `"$Categories`""
+    $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument $arguments -WorkingDirectory $PSScriptRoot
+    $trigger = New-ScheduledTaskTrigger -Daily -At "11:59pm"
+    $principal = New-ScheduledTaskPrincipal -UserID ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType S4U -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -Hidden
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+    Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
+    
+    Write-Host "Scheduled task '$taskName' installed successfully. It will run daily at 11:59 PM."
+}
+
 # Handle script argupments
 function _HandleCli {
-    if ($Install) {
+    if ($InstallMailReportTask) {
         _InstallScheduledTask
         exit
     }
 
-    if ($PSBoundParameters.ContainsKey('GenCred')) {
-        if (-not $GenCred) {
-            Write-Error "The -GenCred parameter requires a path argument for the credential file."
+    if ($InstallAbuseIPDBTask) {
+        _InstallAbuseIPDBTask
+        exit
+    }
+
+    if ($PSBoundParameters.ContainsKey('GenMailCred')) {
+        if (-not $GenMailCred) {
+            Write-Error "The -GenMailCred parameter requires a path argument for the credential file."
             exit 1
         }
-        _GenerateCredentialFile -Path $GenCred
+        _GenerateCredentialFile -Path $GenMailCred
+        exit 0
+    }
+
+    if ($PSBoundParameters.ContainsKey('GenAbuseIPDBKey')) {
+        if (-not $GenAbuseIPDBKey) {
+            Write-Error "The -GenAbuseIPDBKey parameter requires a path argument for the API key file."
+            exit 1
+        }
+        _GenerateAbuseIPDBKeyFile -Path $GenAbuseIPDBKey
         exit 0
     }
 }
 
 _HandleCli
 
+if ($AbuseIPDBReport) {
+    $errorLogPath = Join-Path $PSScriptRoot "report-error.log"
+
+    # Parameter validation
+    $missingParams = [System.Collections.Generic.List[string]]@()
+    if (-not $AbuseIPDBKeyPath) { $missingParams.Add('AbuseIPDBKeyPath') }
+    if (-not $AbuseIPDBCategories) { $missingParams.Add('AbuseIPDBCategories') }
+
+    if ($missingParams.Count -gt 0) {
+        foreach ($p in $missingParams) {
+            Write-Debug "Required parameter for -AbuseIPDBReport is not set: -$p"
+        }
+        Write-Error "The following required parameters for -AbuseIPDBReport are missing: $(($missingParams | ForEach-Object { "-$_" }) -join ', ')"
+        exit 1
+    }
+
+    # Load API key
+    try {
+        $secureApiKey = Import-Clixml -Path $AbuseIPDBKeyPath
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureApiKey)
+        $apiKey = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    } catch {
+        $errorMessage = "Failed to import AbuseIPDB API key from '$AbuseIPDBKeyPath'. Error: $_"
+        Write-Error $errorMessage
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
+        exit 1
+    }
+
+    # Get events from last 24 hours
+    $startTime = (Get-Date).AddDays(-1)
+    $events = Get-WinEvent -FilterHashtable @{
+        LogName      = 'Application'
+        ProviderName = 'wail2ban'
+        ID           = 1000
+        StartTime    = $startTime
+    } -ErrorAction SilentlyContinue
+
+    # Process and report each event
+    foreach ($event in $events) {
+        try {
+            $logObject = $event.Message | ConvertFrom-Json
+            
+            $comment = "Banned from $($logObject.service). Log entry: $($logObject.log_line)"
+            if ($comment.Length -gt 1024) {
+                $comment = $comment.Substring(0, 1021) + "..."
+            }
+
+            $reportParams = @{
+                Uri = "https://api.abuseipdb.com/api/v2/report"
+                Method = "POST"
+                Headers = @{
+                    "Key" = $apiKey
+                    "Accept" = "application/json"
+                }
+                Body = @{
+                    "ip" = $logObject.ip
+                    "categories" = ($AbuseIPDBCategories -join ',')
+                    "comment" = $comment
+                    "timestamp" = $event.TimeCreated.ToUniversalTime().ToString("o")
+                }
+            }
+            $response = Invoke-RestMethod @reportParams
+            Write-Host "Successfully reported $($logObject.ip) to AbuseIPDB. Score is now $($response.data.abuseConfidenceScore)"
+        } catch {
+            $errorMessage = "Failed to process or report event $($event.Id) for IP $($logObject.ip). Error: $_"
+            Write-Warning $errorMessage
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
+        }
+    }
+    exit 0
+}
+
 if ($Mail) {
     $missingParams = [System.Collections.Generic.List[string]]@()
     if (-not $SmtpServer) { $missingParams.Add('SmtpServer') }
     if (-not $From)  { $missingParams.Add('From') }
     if (-not $To)    { $missingParams.Add('To') }
-    if (-not $Cred)       { $missingParams.Add('Cred') }
+    if (-not $MailCred)       { $missingParams.Add('MailCred') }
 
     if ($missingParams.Count -gt 0) {
         foreach ($p in $missingParams) {
@@ -221,9 +386,9 @@ if ($Mail) {
     $errorLogPath = Join-Path $PSScriptRoot "report-error.log"
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     try {
-        $credential = Import-Clixml -Path $Cred
+        $credential = Import-Clixml -Path $MailCred
     } catch {
-        $errorMessage = "Failed to import credential file from '$Cred'. Error: $_"
+        $errorMessage = "Failed to import credential file from '$MailCred'. Error: $_"
         Write-Error $errorMessage
         "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
         exit 1
