@@ -275,24 +275,38 @@ if ($AbuseIPDBReport) {
         exit 0
     }
 
-    $csvPath = Join-Path ([System.IO.Path]::GetTempPath()) "wail2ban-abuseipdb-report.csv"
-    $reportItems | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
-
     try {
-        Invoke-RestMethod `
+        # Manually construct multipart/form-data body for compatibility with PowerShell versions before 6.0
+        $boundary = [System.Guid]::NewGuid().ToString()
+        $crlf = "`r`n"
+
+        # Generate CSV content in memory
+        $csvContent = ($reportItems | ConvertTo-Csv -NoTypeInformation) -join $crlf
+
+        $bodyLines = @(
+            "--$boundary",
+            "Content-Disposition: form-data; name=`"csv`"; filename=`"wail2ban-abuseipdb-report.csv`"",
+            "Content-Type: text/csv",
+            "",
+            $csvContent,
+            "--$boundary--"
+        )
+        $bodyContent = ($bodyLines -join $crlf) + $crlf
+        $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($bodyContent)
+
+        $response = Invoke-RestMethod `
             -Uri 'https://api.abuseipdb.com/api/v2/bulk-report' `
             -Method 'POST' `
-            -Headers @{ 'Key' = $apiKey } `
-            -Form @{ csv = Get-Item $csvPath }
+            -Headers @{ 'Key' = $apiKey; 'Accept' = 'application/json' } `
+            -ContentType "multipart/form-data; boundary=$boundary" `
+            -Body $bodyBytes
+        
+        Write-Host "Successfully sent bulk report to AbuseIPDB. Saved reports: $($response.data.savedReports). Unparseable reports: $($response.data.unparseableReports)."
     } catch {
         $errorMessage = "Failed to send bulk report to AbuseIPDB. Error: $_"
         Write-Error $errorMessage
         "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
         exit 1
-    } finally {
-        if (Test-Path $csvPath) {
-            Remove-Item $csvPath -Force
-        }
     }
     exit 0
 }
