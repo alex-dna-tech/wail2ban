@@ -262,8 +262,8 @@ if ($AbuseIPDBReport) {
                 [PSCustomObject]@{
                     IP         = $logObject.ip
                     Categories = $AbuseIPDBCategories -join ','
-                    Comment    = $event.Message
                     ReportDate = $event.TimeCreated.ToUniversalTime().ToString("o")
+                    Comment    = $event.Message
                 }
             }
         } catch {
@@ -295,8 +295,7 @@ if ($AbuseIPDBReport) {
             $csvContent,
             "--$boundary--"
         )
-        $bodyLines | Out-File -FilePath $errorLogPath -Append -Encoding utf8
-        exit 1
+
         $bodyContent = ($bodyLines -join $crlf) + $crlf
         $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($bodyContent)
 
