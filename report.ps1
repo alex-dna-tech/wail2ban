@@ -279,21 +279,11 @@ if ($AbuseIPDBReport) {
     $reportItems | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
 
     try {
-        $form = @{
-            csv = Get-Item -Path $csvPath
-        }
-
-        $reportParams = @{
-            Uri     = "https://api.abuseipdb.com/api/v2/bulk-report"
-            Method  = "POST"
-            Headers = @{
-                "Key"    = $apiKey
-                "Accept" = "application/json"
-            }
-            Body    = $form
-        }
-        $response = Invoke-RestMethod @reportParams
-        Write-Host "Successfully sent bulk report to AbuseIPDB. Saved reports: $($response.data.savedReports). Unparseable reports: $($response.data.unparseableReports)."
+        Invoke-RestMethod `
+            -Uri 'https://api.abuseipdb.com/api/v2/bulk-report' `
+            -Method 'POST' `
+            -Headers @{ 'Key' = $apiKey } `
+            -Form @{ csv = Get-Item $csvPath }
     } catch {
         $errorMessage = "Failed to send bulk report to AbuseIPDB. Error: $_"
         Write-Error $errorMessage
