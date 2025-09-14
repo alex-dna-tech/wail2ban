@@ -280,8 +280,8 @@ if ($AbuseIPDBReport) {
         $boundary = [System.Guid]::NewGuid().ToString()
         $crlf = "`r`n"
 
-        # Generate CSV content in memory
-        $csvContent = ($reportItems | ConvertTo-Csv -NoTypeInformation) -join $crlf
+        # Generate CSV content in memory, skipping the header as AbuseIPDB expects a header-less CSV.
+        $csvContent = ($reportItems | ConvertTo-Csv -NoTypeInformation | Select-Object -Skip 1) -join $crlf
 
         $bodyLines = @(
             "--$boundary",
