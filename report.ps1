@@ -166,7 +166,7 @@ function _InstallAbuseIPDBTask {
         }
     }
 
-    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 18,22 for SSH and Brute-Force) https://www.abuseipdb.com/categories"
+    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 22,18 for SSH and Brute-Force) https://www.abuseipdb.com/categories"
 
     # Unregister existing task if any
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
@@ -253,32 +253,55 @@ if ($AbuseIPDBReport) {
         EndTime   = (Get-Date).Date.AddDays(1) 
     } -ErrorAction SilentlyContinue
 
-    # Process and report each event
-    foreach ($event in $events) {
+    # Process events for bulk reporting
+    $reportItems = foreach ($event in $events) {
         try {
             $logObject = $event.Message | ConvertFrom-Json
-            $comment = "Banned by GitHub alex-dna-tech/wail2ban. Log entry: {0}" -f $event.Message 
-
-            $reportParams = @{
-                Uri = "https://api.abuseipdb.com/api/v2/report"
-                Method = "POST"
-                Headers = @{
-                    "Key" = $apiKey
-                    "Accept" = "application/json"
-                }
-                Body = @{
-                    "ip" = $logObject.ip
-                    "categories" = ($AbuseIPDBCategories -join ',')
-                    "comment" = $comment
-                    "timestamp" = $event.TimeCreated.ToUniversalTime().ToString("o")
-                }
+            [PSCustomObject]@{
+                ip = $logObject.ip
+                categories = $AbuseIPDBCategories -join ','
+                timestamp = $event.TimeCreated.ToUniversalTime().ToString("o")
+                comment = "Banned by GitHub alex-dna-tech/wail2ban. Log entry: $($event.Message)"
             }
-            $response = Invoke-RestMethod @reportParams
-            Write-Host "Successfully reported $($logObject.ip) to AbuseIPDB. Score is now $($response.data.abuseConfidenceScore)"
         } catch {
-            $errorMessage = "Failed to process or report event $($event.Id) for IP $($logObject.ip). Error: $_"
+            $errorMessage = "Failed to process event $($event.Id). Error: $_"
             Write-Warning $errorMessage
             "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
+        }
+    }
+
+    if ($reportItems.Count -eq 0) {
+        Write-Host "No new events to report to AbuseIPDB."
+        exit 0
+    }
+
+    $csvPath = Join-Path ([System.IO.Path]::GetTempPath()) "wail2ban-abuseipdb-report.csv"
+    $reportItems | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+
+    try {
+        $form = @{
+            csv = $csvPath
+        }
+
+        $reportParams = @{
+            Uri     = "https://api.abuseipdb.com/api/v2/bulk-report"
+            Method  = "POST"
+            Headers = @{
+                "Key"    = $apiKey
+                "Accept" = "application/json"
+            }
+            Form    = $form
+        }
+        $response = Invoke-RestMethod @reportParams
+        Write-Host "Successfully sent bulk report to AbuseIPDB. Saved reports: $($response.data.savedReports). Unparseable reports: $($response.data.unparseableReports)."
+    } catch {
+        $errorMessage = "Failed to send bulk report to AbuseIPDB. Error: $_"
+        Write-Error $errorMessage
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage" | Out-File -FilePath $errorLogPath -Append
+        exit 1
+    } finally {
+        if (Test-Path $csvPath) {
+            Remove-Item $csvPath -Force
         }
     }
     exit 0
