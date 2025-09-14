@@ -254,14 +254,17 @@ if ($AbuseIPDBReport) {
     } -ErrorAction SilentlyContinue
 
     # Process events for bulk reporting
+    $processedIPs = [System.Collections.Generic.HashSet[string]]::new()
     $reportItems = foreach ($event in $events) {
         try {
             $logObject = $event.Message | ConvertFrom-Json
-            [PSCustomObject]@{
-                ip = $logObject.ip
-                categories = $AbuseIPDBCategories -join ','
-                timestamp = $event.TimeCreated.ToUniversalTime().ToString("o")
-                comment = "Banned by GitHub alex-dna-tech/wail2ban. Log entry: $($event.Message)"
+            if ($processedIPs.Add($logObject.ip)) {
+                [PSCustomObject]@{
+                    IP         = $logObject.ip
+                    Categories = $AbuseIPDBCategories -join ','
+                    Comment    = $event.Message
+                    ReportDate = $event.TimeCreated.ToUniversalTime().ToString("o")
+                }
             }
         } catch {
             $errorMessage = "Failed to process event $($event.Id). Error: $_"
