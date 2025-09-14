@@ -38,7 +38,6 @@ param (
     [switch]$Mail,
     [string]$SmtpServer,
     [int]$SmtpPort = 587,
-    [string]$From,
     [string[]]$To,
     [string]$MailCred,
     [string]$GenMailCred,
@@ -125,7 +124,7 @@ function _InstallMailReportTask {
     # Unregister existing task if any
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
     
-    $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -MailCred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -From `"$FromAddr`" -To `"$ToAddr`""
+    $arguments = "-ExecutionPolicy Bypass -File `"$($PSScriptRoot)\report.ps1`" -Mail -MailCred `"$CredPath`" -SmtpServer `"$SmtpSrv`" -To `"$ToAddr`""
     $action = New-ScheduledTaskAction -Execute (Get-Command 'powershell.exe').Path -Argument $arguments -WorkingDirectory $PSScriptRoot
     $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "8am"
     $principal = New-ScheduledTaskPrincipal -UserID ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType S4U -RunLevel Highest
@@ -263,7 +262,7 @@ if ($AbuseIPDBReport) {
                     IP         = $logObject.ip
                     Categories = $AbuseIPDBCategories -join ','
                     ReportDate = $event.TimeCreated.ToUniversalTime().ToString("o")
-                    Comment    = $event.Message
+                    Comment    = "wail2ban by alex-dna-tech on Github: $event.Message"
                 }
             }
         } catch {
@@ -319,7 +318,6 @@ if ($AbuseIPDBReport) {
 if ($Mail) {
     $missingParams = [System.Collections.Generic.List[string]]@()
     if (-not $SmtpServer) { $missingParams.Add('SmtpServer') }
-    if (-not $From)  { $missingParams.Add('From') }
     if (-not $To)    { $missingParams.Add('To') }
     if (-not $MailCred)       { $missingParams.Add('MailCred') }
 
@@ -434,7 +432,7 @@ if ($Mail) {
 
 	# Create MailMessage
 	$msg = New-Object System.Net.Mail.MailMessage
-	$msg.From = $From
+	$msg.From = $credential.UserName
 	$msg.To.Add($To)
 	$msg.Subject = "WAIL2Ban Report $($reportData.DateRange)"
 	$msg.Body = $reportData.Html
