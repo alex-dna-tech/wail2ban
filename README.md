@@ -1,5 +1,10 @@
-# Wail2ban
+# Wail2Ban-NG (Maintained Fork)
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
+
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](./LICENSE)
+
+> A maintained and extended fork of the original [wail2ban](https://github.com/glasnt/wail2ban) project by Katie McLaughlin.  
+> This project continues development, adds modern support, and ensures ongoing compatibility.
 
 ![Saddest Whale](http://i.imgur.com/NVlsY.png "Saddest Whale")
 
