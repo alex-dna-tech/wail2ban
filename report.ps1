@@ -291,9 +291,12 @@ if ($AbuseIPDBReport) {
             "Content-Disposition: form-data; name=`"csv`"; filename=`"wail2ban-abuseipdb-report.csv`"",
             "Content-Type: text/csv",
             "",
+            "IP,Categories,ReportDate,Comment",
             $csvContent,
             "--$boundary--"
         )
+        $bodyLines | Out-File -FilePath $errorLogPath -Append -Encoding utf8
+        exit 1
         $bodyContent = ($bodyLines -join $crlf) + $crlf
         $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($bodyContent)
 
