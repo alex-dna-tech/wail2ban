@@ -280,7 +280,7 @@ if ($AbuseIPDBReport) {
 
     try {
         $form = @{
-            csv = $csvPath
+            csv = Get-Item -Path $csvPath
         }
 
         $reportParams = @{
@@ -290,7 +290,7 @@ if ($AbuseIPDBReport) {
                 "Key"    = $apiKey
                 "Accept" = "application/json"
             }
-            Form    = $form
+            Body    = $form
         }
         $response = Invoke-RestMethod @reportParams
         Write-Host "Successfully sent bulk report to AbuseIPDB. Saved reports: $($response.data.savedReports). Unparseable reports: $($response.data.unparseableReports)."
