@@ -1,4 +1,5 @@
 # Wail2ban
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 
 ![Saddest Whale](http://i.imgur.com/NVlsY.png "Saddest Whale")
 
@@ -118,7 +119,6 @@ You can then use `C:\secure\abuseipdb.xml` with the `-AbuseIPDBKeyPath` paramete
 - `-Mail`: If specified, the HTML report will be sent via email.
 - `-SmtpServer <string>`: The address of the SMTP server. Required if `-Mail` is specified.
 - `-SmtpPort <int>`: The port to use on the SMTP server (default is 587).
-- `-From <string>`: The sender's email address. Required if `-Mail` is specified.
 - `-To <string[]>`: The recipient's email address(es). Required if `-Mail` is specified.
 - `-MailCred <string>`: Path to the credential file for SMTP authentication. Required if `-Mail` is specified.
 - `-GenMailCred <string>`: If specified, prompts for SMTP credentials and saves them to the given path, then exits.

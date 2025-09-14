@@ -11,8 +11,6 @@
     The address of the SMTP server. Required if -Mail is specified.
 .PARAMETER SmtpPort
     The port to use on the SMTP server.
-.PARAMETER From
-    The sender's email address. Required if -Mail is specified.
 .PARAMETER To
     The recipient's email address(es). Required if -Mail is specified.
 .PARAMETER MailCred
@@ -45,7 +43,7 @@ param (
     [switch]$AbuseIPDBReport,
     [string]$AbuseIPDBKeyPath,
     [string]$GenAbuseIPDBKey,
-    [string[]]$AbuseIPDBCategories,
+    [string[]]$AbuseIPDBCategories = "18",
     [switch]$InstallAbuseIPDBTask
 )
 
@@ -165,7 +163,11 @@ function _InstallAbuseIPDBTask {
         }
     }
 
-    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 22,18 for SSH and Brute-Force) https://www.abuseipdb.com/categories"
+    $Categories = Read-Host "Enter AbuseIPDB categories, comma-separated (e.g., 22,18 for SSH and Brute-Force) or empty for default (18) https://www.abuseipdb.com/categories"
+    if ([string]::IsNullOrWhiteSpace($Categories)) {
+        $Categories = "18"
+        Write-Host "No categories provided, using default: $Categories"
+    }
 
     # Unregister existing task if any
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
